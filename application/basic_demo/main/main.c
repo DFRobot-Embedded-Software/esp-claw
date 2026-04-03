@@ -19,9 +19,9 @@ static basic_demo_settings_t s_settings = {0};
 
 #define BASIC_DEMO_FATFS_BASE_PATH       "/fatfs/data"
 #define BASIC_DEMO_FATFS_PARTITION_LABEL "storage"
+#define BASIC_DEMO_ENABLE_MEM_LOG        (0)
 
 static wl_handle_t s_wl_handle = WL_INVALID_HANDLE;
-static TaskStatus_t s_task_status_snapshot[24];
 
 static esp_err_t init_nvs(void)
 {
@@ -67,6 +67,10 @@ static esp_err_t init_fatfs(void)
     return ESP_OK;
 }
 
+#if BASIC_DEMO_ENABLE_MEM_LOG
+
+static TaskStatus_t s_task_status_snapshot[24];
+
 static void print_task_stack_info(void)
 {
     UBaseType_t count = uxTaskGetSystemState(s_task_status_snapshot,
@@ -96,6 +100,8 @@ static void memory_monitor_task(void *arg)
     }
 }
 
+#endif
+
 void app_main(void)
 {
     esp_log_level_set("esp-x509-crt-bundle", ESP_LOG_WARN);
@@ -121,6 +127,8 @@ void app_main(void)
 
     ESP_ERROR_CHECK(app_clawgent_start(&s_settings));
 
+#if BASIC_DEMO_ENABLE_MEM_LOG
     /* Start memory monitor: print internal free, min free, PSRAM free every 20s */
-    // xTaskCreate(memory_monitor_task, "mem_mon", 8192, NULL, 1, NULL);
+    xTaskCreate(memory_monitor_task, "mem_mon", 8192, NULL, 1, NULL);
+#endif
 }
