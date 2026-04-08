@@ -28,6 +28,7 @@ static const char *TAG = "claw_core";
 #define CLAW_CORE_DEFAULT_RESPONSE_Q      4
 #define CLAW_CORE_DEFAULT_TOOL_ITERATIONS 10
 #define CLAW_CORE_LOG_SNIPPET_LEN         96
+#define CLAW_CORE_TOOL_SUMMARY_MAX_LEN    768
 
 typedef struct {
     claw_core_request_t view;
@@ -102,6 +103,63 @@ static const char *context_kind_to_string(claw_core_context_kind_t kind)
     default:
         return "unknown";
     }
+}
+
+static esp_err_t append_tool_summary_line(char *summary,
+                                          size_t summary_size,
+                                          const char *tool_name,
+                                          bool ok)
+{
+    size_t used;
+    int written;
+
+    if (!summary || summary_size == 0 || !tool_name || !tool_name[0]) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    used = strlen(summary);
+    if (used >= summary_size - 1) {
+        return ESP_ERR_NO_MEM;
+    }
+
+    written = snprintf(summary + used,
+                       summary_size - used,
+                       "%s- %s: %s\n",
+                       used == 0 ? "[tool_calls]\n" : "",
+                       tool_name,
+                       ok ? "ok" : "failed");
+    if (written < 0 || (size_t)written >= summary_size - used) {
+        return ESP_ERR_NO_MEM;
+    }
+
+    return ESP_OK;
+}
+
+static char *build_session_assistant_text(const char *tool_summary, const char *assistant_text)
+{
+    const char *body = assistant_text ? assistant_text : "";
+    size_t summary_len = tool_summary ? strlen(tool_summary) : 0;
+    size_t body_len = strlen(body);
+    size_t total_len;
+    char *combined;
+
+    if (summary_len == 0) {
+        return dup_string(body);
+    }
+
+    total_len = summary_len + (body_len ? 1 : 0) + body_len + 1;
+    combined = calloc(1, total_len);
+    if (!combined) {
+        return NULL;
+    }
+
+    memcpy(combined, tool_summary, summary_len);
+    if (body_len) {
+        combined[summary_len] = '\n';
+        memcpy(combined + summary_len + 1, body, body_len);
+    }
+
+    return combined;
 }
 
 static void log_tool_call_names(uint32_t request_id, const claw_core_llm_response_t *response)
@@ -486,7 +544,9 @@ static void claw_core_finish_from_plain_text(uint32_t request_id,
 
 static esp_err_t append_tool_results_message(cJSON *runtime_messages,
                                              const claw_core_llm_response_t *response,
-                                             const claw_core_request_t *request)
+                                             const claw_core_request_t *request,
+                                             char *tool_summary,
+                                             size_t tool_summary_size)
 {
     size_t i;
 
@@ -524,6 +584,16 @@ static esp_err_t append_tool_results_message(cJSON *runtime_messages,
                  esp_err_to_name(err),
                  log_snippet(tool_output),
                  strlen(tool_output) > CLAW_CORE_LOG_SNIPPET_LEN ? "..." : "");
+
+        if (tool_summary && tool_summary_size > 0 && response->tool_calls[i].name) {
+            esp_err_t summary_err = append_tool_summary_line(tool_summary,
+                                                             tool_summary_size,
+                                                             response->tool_calls[i].name,
+                                                             err == ESP_OK);
+            if (summary_err != ESP_OK) {
+                ESP_LOGW(TAG, "tool summary truncated for request=%" PRIu32, request->request_id);
+            }
+        }
 
         tool_message = cJSON_CreateObject();
         if (!tool_message) {
@@ -674,6 +744,7 @@ static void claw_core_task(void *arg)
         cJSON *messages = NULL;
         char *system_prompt = NULL;
         char *tools_json = NULL;
+        char tool_summary[CLAW_CORE_TOOL_SUMMARY_MAX_LEN] = {0};
         claw_core_llm_response_t llm_response = {0};
         uint32_t iteration = 0;
         esp_err_t err = ESP_OK;
@@ -745,7 +816,11 @@ static void claw_core_task(void *arg)
                 goto finish_request;
             }
 
-            err = append_tool_results_message(runtime_messages, &llm_response, &request.view);
+            err = append_tool_results_message(runtime_messages,
+                                              &llm_response,
+                                              &request.view,
+                                              tool_summary,
+                                              sizeof(tool_summary));
             if (err != ESP_OK) {
                 response.view.error_message = dup_string(esp_err_to_name(err));
                 goto finish_request;
@@ -760,18 +835,25 @@ static void claw_core_task(void *arg)
         }
 
         if (err == ESP_OK && response.view.text) {
+            char *session_assistant_text = NULL;
+
             response.view.status = CLAW_CORE_RESPONSE_STATUS_OK;
+            session_assistant_text = build_session_assistant_text(tool_summary, response.view.text);
+            if (!session_assistant_text) {
+                ESP_LOGW(TAG, "failed to build session assistant text");
+            }
             if (response.view.text[0] &&
                     s_core.append_session_turn &&
                     request.view.session_id && request.view.session_id[0]) {
                 err = s_core.append_session_turn(request.view.session_id,
                                                  request.view.user_text,
-                                                 response.view.text,
+                                                 session_assistant_text ? session_assistant_text : response.view.text,
                                                  s_core.append_session_turn_user_ctx);
                 if (err != ESP_OK) {
                     ESP_LOGW(TAG, "append_session_turn failed: %s", esp_err_to_name(err));
                 }
             }
+            free(session_assistant_text);
         } else if (!response.view.error_message) {
             response.view.error_message = dup_string(esp_err_to_name(err));
         }
