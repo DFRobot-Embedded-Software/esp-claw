@@ -237,16 +237,104 @@ static ssize_t cap_scheduler_find_free_index_locked(void)
     return -1;
 }
 
-static esp_err_t cap_scheduler_persist_locked(void)
+static esp_err_t cap_scheduler_persist_definitions_locked(void)
 {
-    ESP_RETURN_ON_ERROR(cap_scheduler_save_items(s_cap_scheduler.schedules_path,
-                                                 s_cap_scheduler.entries,
-                                                 s_cap_scheduler.max_items),
-                        TAG,
-                        "Failed to save scheduler definitions");
+    return cap_scheduler_save_items(s_cap_scheduler.schedules_path,
+                                    s_cap_scheduler.entries,
+                                    s_cap_scheduler.max_items);
+}
+
+static esp_err_t cap_scheduler_persist_runtime_state_locked(void)
+{
     return cap_scheduler_save_state(s_cap_scheduler.state_path,
                                     s_cap_scheduler.entries,
                                     s_cap_scheduler.max_items);
+}
+
+static esp_err_t cap_scheduler_persist_all_locked(void)
+{
+    ESP_RETURN_ON_ERROR(cap_scheduler_persist_definitions_locked(),
+                        TAG,
+                        "Failed to save scheduler definitions");
+    return cap_scheduler_persist_runtime_state_locked();
+}
+
+static esp_err_t cap_scheduler_load_runtime_state_locked(bool *runtime_state_loaded)
+{
+    char backup_path[CAP_SCHEDULER_PATH_BUF_LEN] = {0};
+    esp_err_t primary_err;
+    esp_err_t backup_err;
+    bool recovery_warning_logged = false;
+
+    if (!runtime_state_loaded) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    *runtime_state_loaded = false;
+    primary_err = cap_scheduler_load_state(s_cap_scheduler.state_path,
+                                           s_cap_scheduler.entries,
+                                           s_cap_scheduler.max_items);
+    if (primary_err == ESP_OK) {
+        ESP_LOGI(TAG, "Loaded scheduler runtime state from primary %s",
+                 s_cap_scheduler.state_path);
+        *runtime_state_loaded = true;
+        return ESP_OK;
+    }
+
+    if (primary_err == ESP_ERR_INVALID_RESPONSE) {
+        ESP_LOGW(TAG,
+                 "Scheduler state file %s is invalid, trying backup",
+                 s_cap_scheduler.state_path);
+        recovery_warning_logged = true;
+    } else if (primary_err != ESP_ERR_NOT_FOUND) {
+        ESP_LOGW(TAG, "Failed to load scheduler state from %s: %s",
+                 s_cap_scheduler.state_path,
+                 esp_err_to_name(primary_err));
+        recovery_warning_logged = true;
+    } else {
+        recovery_warning_logged = true;
+    }
+
+    if (cap_scheduler_build_aux_path(s_cap_scheduler.state_path,
+                                     CAP_SCHEDULER_STATE_BACKUP_SUFFIX,
+                                     backup_path,
+                                     sizeof(backup_path)) != ESP_OK) {
+        return ESP_OK;
+    }
+
+    backup_err = cap_scheduler_load_state(backup_path,
+                                          s_cap_scheduler.entries,
+                                          s_cap_scheduler.max_items);
+    if (backup_err == ESP_OK) {
+        *runtime_state_loaded = true;
+        ESP_LOGW(TAG,
+                 "Primary runtime state unavailable, recovered scheduler runtime state from backup %s",
+                 backup_path);
+        return ESP_OK;
+    }
+
+    if (backup_err == ESP_ERR_INVALID_RESPONSE) {
+        ESP_LOGW(TAG, "Scheduler backup state file %s is invalid, continuing without runtime state",
+                 backup_path);
+    } else if (backup_err != ESP_ERR_NOT_FOUND) {
+        ESP_LOGW(TAG, "Failed to load scheduler backup state from %s: %s",
+                 backup_path,
+                 esp_err_to_name(backup_err));
+    }
+
+    if (primary_err == ESP_ERR_INVALID_RESPONSE || primary_err == ESP_ERR_NOT_FOUND) {
+        if (recovery_warning_logged) {
+            ESP_LOGW(TAG,
+                     "Primary and backup runtime state unavailable, rebuilding runtime state from %s only",
+                     s_cap_scheduler.schedules_path);
+        }
+        return ESP_OK;
+    }
+
+    ESP_LOGW(TAG,
+             "Primary and backup runtime state unavailable, rebuilding runtime state from %s only",
+             s_cap_scheduler.schedules_path);
+    return ESP_OK;
 }
 
 static esp_err_t cap_scheduler_refresh_entry_locked(cap_scheduler_entry_t *entry, int64_t now_ms)
@@ -438,6 +526,7 @@ static esp_err_t cap_scheduler_fire_due_entries(void)
 {
     esp_err_t overall = ESP_OK;
     int64_t now_ms = cap_scheduler_now_ms();
+    bool runtime_state_changed = false;
 
     cap_scheduler_lock();
     for (size_t i = 0; i < s_cap_scheduler.max_items; i++) {
@@ -452,19 +541,19 @@ static esp_err_t cap_scheduler_fire_due_entries(void)
         if (entry->item.catch_up_policy == CAP_SCHEDULER_CATCH_UP_SKIP &&
                 now_ms > entry->next_fire_ms + (int64_t)s_cap_scheduler.config.tick_ms) {
             entry->missed_count++;
+            runtime_state_changed = true;
             if (cap_scheduler_refresh_entry_locked(entry, now_ms) != ESP_OK) {
                 overall = ESP_FAIL;
             }
             continue;
         }
+        runtime_state_changed = true;
         if (cap_scheduler_publish_entry_locked(entry, false, now_ms) != ESP_OK) {
             overall = ESP_FAIL;
         }
     }
-    if (s_cap_scheduler.config.persist_after_fire) {
-        cap_scheduler_save_state(s_cap_scheduler.state_path,
-                                 s_cap_scheduler.entries,
-                                 s_cap_scheduler.max_items);
+    if (s_cap_scheduler.config.persist_after_fire && runtime_state_changed) {
+        cap_scheduler_persist_runtime_state_locked();
     }
     cap_scheduler_unlock();
     return overall;
@@ -490,6 +579,7 @@ static esp_err_t cap_scheduler_load_from_disk_locked(void)
     size_t item_count = 0;
     int64_t now_ms = cap_scheduler_now_ms();
     esp_err_t err;
+    bool runtime_state_loaded = false;
 
     items = calloc(s_cap_scheduler.max_items, sizeof(cap_scheduler_item_t));
     if (!items) {
@@ -520,16 +610,12 @@ static esp_err_t cap_scheduler_load_from_disk_locked(void)
     s_cap_scheduler.item_count = item_count;
     free(items);
 
-    err = cap_scheduler_load_state(s_cap_scheduler.state_path,
-                                   s_cap_scheduler.entries,
-                                   s_cap_scheduler.max_items);
-    if (err != ESP_OK && err != ESP_ERR_NOT_FOUND) {
-        ESP_LOGW(TAG, "Failed to load scheduler state from %s: %s",
-                 s_cap_scheduler.state_path,
-                 esp_err_to_name(err));
+    err = cap_scheduler_load_runtime_state_locked(&runtime_state_loaded);
+    if (err != ESP_OK) {
         return err;
     }
 
+    
     for (size_t i = 0; i < s_cap_scheduler.max_items; i++) {
         if (!s_cap_scheduler.entries[i].occupied) {
             continue;
@@ -538,17 +624,16 @@ static esp_err_t cap_scheduler_load_from_disk_locked(void)
             continue;
         }
         err = cap_scheduler_refresh_entry_locked(&s_cap_scheduler.entries[i],
-                                                 s_cap_scheduler.entries[i].last_fire_ms > 0 ?
-                                                 s_cap_scheduler.entries[i].last_fire_ms : now_ms);
+                                                    s_cap_scheduler.entries[i].last_fire_ms > 0 ?
+                                                    s_cap_scheduler.entries[i].last_fire_ms : now_ms);
         if (err != ESP_OK) {
             ESP_LOGW(TAG, "Failed to refresh schedule %s: %s",
-                     s_cap_scheduler.entries[i].item.id,
-                     esp_err_to_name(err));
+                        s_cap_scheduler.entries[i].item.id,
+                        esp_err_to_name(err));
         }
     }
-    err = cap_scheduler_save_state(s_cap_scheduler.state_path,
-                                   s_cap_scheduler.entries,
-                                   s_cap_scheduler.max_items);
+
+    err = cap_scheduler_persist_runtime_state_locked();
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "Failed to save initial scheduler state to %s: %s",
                  s_cap_scheduler.state_path,
@@ -779,7 +864,7 @@ esp_err_t cap_scheduler_add(const cap_scheduler_item_t *item)
                                             CAP_SCHEDULER_STATUS_SCHEDULED : CAP_SCHEDULER_STATUS_DISABLED;
     cap_scheduler_refresh_entry_locked(&s_cap_scheduler.entries[index], now_ms);
     s_cap_scheduler.item_count = cap_scheduler_active_count_locked();
-    err = cap_scheduler_persist_locked();
+    err = cap_scheduler_persist_all_locked();
     if (err != ESP_OK) {
         memset(&s_cap_scheduler.entries[index], 0, sizeof(s_cap_scheduler.entries[index]));
         s_cap_scheduler.item_count = cap_scheduler_active_count_locked();
@@ -816,7 +901,7 @@ esp_err_t cap_scheduler_update(const cap_scheduler_item_t *item)
     if (s_cap_scheduler.entries[index].status != CAP_SCHEDULER_STATUS_PAUSED) {
         cap_scheduler_refresh_entry_locked(&s_cap_scheduler.entries[index], now_ms);
     }
-    err = cap_scheduler_persist_locked();
+    err = cap_scheduler_persist_all_locked();
     if (err != ESP_OK) {
         s_cap_scheduler.entries[index] = previous_entry;
         cap_scheduler_unlock();
@@ -845,7 +930,7 @@ esp_err_t cap_scheduler_remove(const char *id)
     previous_entry = s_cap_scheduler.entries[index];
     memset(&s_cap_scheduler.entries[index], 0, sizeof(s_cap_scheduler.entries[index]));
     s_cap_scheduler.item_count = cap_scheduler_active_count_locked();
-    err = cap_scheduler_persist_locked();
+    err = cap_scheduler_persist_all_locked();
     if (err != ESP_OK) {
         s_cap_scheduler.entries[index] = previous_entry;
         s_cap_scheduler.item_count = cap_scheduler_active_count_locked();
@@ -878,7 +963,7 @@ esp_err_t cap_scheduler_enable(const char *id, bool enabled)
                                             CAP_SCHEDULER_STATUS_SCHEDULED : CAP_SCHEDULER_STATUS_DISABLED;
     s_cap_scheduler.entries[index].last_error_code = ESP_OK;
     cap_scheduler_refresh_entry_locked(&s_cap_scheduler.entries[index], now_ms);
-    err = cap_scheduler_persist_locked();
+    err = cap_scheduler_persist_all_locked();
     if (err != ESP_OK) {
         s_cap_scheduler.entries[index] = previous_entry;
         cap_scheduler_unlock();
@@ -905,7 +990,7 @@ esp_err_t cap_scheduler_pause(const char *id)
     }
     previous_entry = s_cap_scheduler.entries[index];
     s_cap_scheduler.entries[index].status = CAP_SCHEDULER_STATUS_PAUSED;
-    err = cap_scheduler_persist_locked();
+    err = cap_scheduler_persist_runtime_state_locked();
     if (err != ESP_OK) {
         s_cap_scheduler.entries[index] = previous_entry;
         cap_scheduler_unlock();
@@ -933,7 +1018,7 @@ esp_err_t cap_scheduler_resume(const char *id)
     }
     previous_entry = s_cap_scheduler.entries[index];
     cap_scheduler_refresh_entry_locked(&s_cap_scheduler.entries[index], now_ms);
-    err = cap_scheduler_persist_locked();
+    err = cap_scheduler_persist_runtime_state_locked();
     if (err != ESP_OK) {
         s_cap_scheduler.entries[index] = previous_entry;
         cap_scheduler_unlock();
@@ -959,7 +1044,7 @@ esp_err_t cap_scheduler_trigger_now(const char *id)
         return ESP_ERR_NOT_FOUND;
     }
     err = cap_scheduler_publish_entry_locked(&s_cap_scheduler.entries[index], true, cap_scheduler_now_ms());
-    persist_err = cap_scheduler_persist_locked();
+    persist_err = cap_scheduler_persist_runtime_state_locked();
     cap_scheduler_unlock();
     if (err != ESP_OK) {
         return err;
@@ -1081,7 +1166,7 @@ esp_err_t cap_scheduler_handle_time_sync(void)
         }
     }
 
-    err = cap_scheduler_persist_locked();
+    err = cap_scheduler_persist_runtime_state_locked();
     cap_scheduler_unlock();
     return err;
 }

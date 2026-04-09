@@ -61,7 +61,7 @@
     "session_policy": "trigger",
     "text": "QQ cron demo every minute",
     "payload_json": "{\"message\":\"3 min trigger from cron\"}",
-    "catch_up_policy": "skip",
+    "catch_up_policy": "fire_once",
     "max_runs": 0
   },
   {

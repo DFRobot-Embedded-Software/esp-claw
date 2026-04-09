@@ -7,6 +7,38 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <unistd.h>
+
+#include "esp_log.h"
+
+static const char *TAG = "cap_scheduler";
+
+static void cap_scheduler_log_errno_failure(const char *operation, const char *path)
+{
+    int saved_errno = errno;
+
+    ESP_LOGW(TAG,
+             "%s failed path=%s errno=%d (%s)",
+             operation ? operation : "file operation",
+             path ? path : "(null)",
+             saved_errno,
+             strerror(saved_errno));
+}
+
+static void cap_scheduler_log_errno_failure2(const char *operation,
+                                             const char *src_path,
+                                             const char *dst_path)
+{
+    int saved_errno = errno;
+
+    ESP_LOGW(TAG,
+             "%s failed src=%s dst=%s errno=%d (%s)",
+             operation ? operation : "file operation",
+             src_path ? src_path : "(null)",
+             dst_path ? dst_path : "(null)",
+             saved_errno,
+             strerror(saved_errno));
+}
 
 static esp_err_t cap_scheduler_read_file(const char *path, char **out_buf)
 {
@@ -20,15 +52,20 @@ static esp_err_t cap_scheduler_read_file(const char *path, char **out_buf)
 
     file = fopen(path, "rb");
     if (!file) {
+        if (errno != ENOENT) {
+            cap_scheduler_log_errno_failure("fopen(read)", path);
+        }
         return errno == ENOENT ? ESP_ERR_NOT_FOUND : ESP_FAIL;
     }
 
     if (fseek(file, 0, SEEK_END) != 0) {
+        cap_scheduler_log_errno_failure("fseek(end)", path);
         fclose(file);
         return ESP_FAIL;
     }
     file_size = ftell(file);
     if (file_size < 0) {
+        cap_scheduler_log_errno_failure("ftell", path);
         fclose(file);
         return ESP_FAIL;
     }
@@ -40,6 +77,7 @@ static esp_err_t cap_scheduler_read_file(const char *path, char **out_buf)
         return ESP_ERR_NO_MEM;
     }
     if (file_size > 0 && fread(buf, 1, (size_t)file_size, file) != (size_t)file_size) {
+        cap_scheduler_log_errno_failure("fread", path);
         fclose(file);
         free(buf);
         return ESP_FAIL;
@@ -92,12 +130,14 @@ static esp_err_t cap_scheduler_ensure_parent_dir(const char *path)
         }
         *cursor = '\0';
         if (mkdir(buf, 0755) != 0 && errno != EEXIST) {
+            cap_scheduler_log_errno_failure("mkdir(parent)", buf);
             return ESP_FAIL;
         }
         *cursor = '/';
     }
 
     if (len > 0 && mkdir(buf, 0755) != 0 && errno != EEXIST) {
+        cap_scheduler_log_errno_failure("mkdir(parent)", buf);
         return ESP_FAIL;
     }
     return ESP_OK;
@@ -111,18 +151,303 @@ static esp_err_t cap_scheduler_write_file(const char *path, const char *content)
         return ESP_ERR_INVALID_ARG;
     }
     if (cap_scheduler_ensure_parent_dir(path) != ESP_OK) {
+        ESP_LOGW(TAG, "ensure parent dir failed for %s", path);
         return ESP_FAIL;
     }
 
     file = fopen(path, "wb");
     if (!file) {
+        cap_scheduler_log_errno_failure("fopen(write)", path);
         return ESP_FAIL;
     }
     if (fwrite(content, 1, strlen(content), file) != strlen(content)) {
+        cap_scheduler_log_errno_failure("fwrite", path);
         fclose(file);
         return ESP_FAIL;
     }
     fclose(file);
+    return ESP_OK;
+}
+
+esp_err_t cap_scheduler_build_aux_path(const char *path,
+                                       const char *suffix,
+                                       char *out_path,
+                                       size_t out_path_size)
+{
+    int written;
+
+    if (!path || !suffix || !out_path || out_path_size == 0) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    written = snprintf(out_path, out_path_size, "%s%s", path, suffix);
+    if (written < 0 || (size_t)written >= out_path_size) {
+        return ESP_ERR_INVALID_SIZE;
+    }
+
+    return ESP_OK;
+}
+
+static esp_err_t cap_scheduler_write_file_and_sync(const char *path, const char *content)
+{
+    FILE *file = NULL;
+    size_t content_len;
+
+    if (!path || !content) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (cap_scheduler_ensure_parent_dir(path) != ESP_OK) {
+        ESP_LOGW(TAG, "ensure parent dir failed for %s", path);
+        return ESP_FAIL;
+    }
+
+    file = fopen(path, "wb");
+    if (!file) {
+        cap_scheduler_log_errno_failure("fopen(write+sync)", path);
+        return ESP_FAIL;
+    }
+
+    content_len = strlen(content);
+    if (content_len > 0 && fwrite(content, 1, content_len, file) != content_len) {
+        cap_scheduler_log_errno_failure("fwrite(write+sync)", path);
+        fclose(file);
+        return ESP_FAIL;
+    }
+    if (fflush(file) != 0) {
+        cap_scheduler_log_errno_failure("fflush", path);
+        fclose(file);
+        return ESP_FAIL;
+    }
+#ifdef __unix__
+    if (fsync(fileno(file)) != 0) {
+        cap_scheduler_log_errno_failure("fsync", path);
+        fclose(file);
+        return ESP_FAIL;
+    }
+#endif
+
+    fclose(file);
+    return ESP_OK;
+}
+
+static esp_err_t cap_scheduler_validate_state_json_text(const char *json)
+{
+    cJSON *root = NULL;
+
+    if (!json) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    root = cJSON_Parse(json);
+    if (!cJSON_IsArray(root)) {
+        cJSON_Delete(root);
+        return ESP_ERR_INVALID_RESPONSE;
+    }
+
+    cJSON_Delete(root);
+    return ESP_OK;
+}
+
+static esp_err_t cap_scheduler_validate_state_file(const char *path)
+{
+    char *buf = NULL;
+    esp_err_t err;
+
+    err = cap_scheduler_read_file(path, &buf);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = cap_scheduler_validate_state_json_text(buf);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "State file validation failed path=%s err=%s",
+                 path,
+                 esp_err_to_name(err));
+    }
+    free(buf);
+    return err;
+}
+
+static void cap_scheduler_remove_file_if_exists(const char *path)
+{
+    if (!path) {
+        return;
+    }
+
+    if (unlink(path) != 0 && errno != ENOENT) {
+        return;
+    }
+}
+
+static esp_err_t cap_scheduler_copy_file(const char *src_path, const char *dst_path)
+{
+    char *buf = NULL;
+    esp_err_t err;
+
+    if (!src_path || !dst_path) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    err = cap_scheduler_read_file(src_path, &buf);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = cap_scheduler_write_file_and_sync(dst_path, buf);
+    free(buf);
+    return err;
+}
+
+static esp_err_t cap_scheduler_rotate_state_backup(const char *path, const char *backup_path)
+{
+    char backup_tmp_path[CAP_SCHEDULER_PATH_BUF_LEN] = {0};
+    esp_err_t err;
+
+    err = cap_scheduler_validate_state_file(path);
+    if (err == ESP_ERR_NOT_FOUND) {
+        return ESP_OK;
+    }
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "Skip backup rotation because primary state is not valid path=%s err=%s",
+                 path,
+                 esp_err_to_name(err));
+        return ESP_OK;
+    }
+
+    err = cap_scheduler_build_aux_path(backup_path,
+                                       CAP_SCHEDULER_STATE_TMP_SUFFIX,
+                                       backup_tmp_path,
+                                       sizeof(backup_tmp_path));
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    cap_scheduler_remove_file_if_exists(backup_tmp_path);
+    err = cap_scheduler_copy_file(path, backup_tmp_path);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "copy primary to backup temp failed src=%s dst=%s err=%s",
+                 path,
+                 backup_tmp_path,
+                 esp_err_to_name(err));
+        return err;
+    }
+
+    cap_scheduler_remove_file_if_exists(backup_path);
+    if (rename(backup_tmp_path, backup_path) != 0) {
+        cap_scheduler_log_errno_failure2("rename(backup_tmp->backup)",
+                                         backup_tmp_path,
+                                         backup_path);
+        cap_scheduler_remove_file_if_exists(backup_tmp_path);
+        return ESP_FAIL;
+    }
+
+    cap_scheduler_remove_file_if_exists(path);
+    return ESP_OK;
+}
+
+static esp_err_t cap_scheduler_promote_state_file(const char *tmp_path, const char *path)
+{
+    esp_err_t err;
+
+    if (!tmp_path || !path) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    if (rename(tmp_path, path) == 0) {
+        return ESP_OK;
+    }
+    cap_scheduler_log_errno_failure2("rename(tmp->primary)", tmp_path, path);
+
+    cap_scheduler_remove_file_if_exists(path);
+    if (rename(tmp_path, path) == 0) {
+        return ESP_OK;
+    }
+    cap_scheduler_log_errno_failure2("rename(tmp->primary after remove)", tmp_path, path);
+
+    err = cap_scheduler_copy_file(tmp_path, path);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "copy temp state into primary failed src=%s dst=%s err=%s",
+                 tmp_path,
+                 path,
+                 esp_err_to_name(err));
+        return err;
+    }
+
+    cap_scheduler_remove_file_if_exists(tmp_path);
+    return ESP_OK;
+}
+
+static esp_err_t cap_scheduler_write_state_file(const char *path, const char *content)
+{
+    char tmp_path[CAP_SCHEDULER_PATH_BUF_LEN] = {0};
+    char backup_path[CAP_SCHEDULER_PATH_BUF_LEN] = {0};
+    esp_err_t err;
+
+    if (!path || !content) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    err = cap_scheduler_validate_state_json_text(content);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "Rendered runtime state JSON is invalid path=%s err=%s",
+                 path,
+                 esp_err_to_name(err));
+        return err;
+    }
+
+    err = cap_scheduler_build_aux_path(path,
+                                       CAP_SCHEDULER_STATE_TMP_SUFFIX,
+                                       tmp_path,
+                                       sizeof(tmp_path));
+    if (err != ESP_OK) {
+        return err;
+    }
+    err = cap_scheduler_build_aux_path(path,
+                                       CAP_SCHEDULER_STATE_BACKUP_SUFFIX,
+                                       backup_path,
+                                       sizeof(backup_path));
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    cap_scheduler_remove_file_if_exists(tmp_path);
+    err = cap_scheduler_write_file_and_sync(tmp_path, content);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "Write runtime state temp file failed path=%s err=%s",
+                 tmp_path,
+                 esp_err_to_name(err));
+        return err;
+    }
+
+    err = cap_scheduler_validate_state_file(tmp_path);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "Validate runtime state temp file failed path=%s err=%s",
+                 tmp_path,
+                 esp_err_to_name(err));
+        cap_scheduler_remove_file_if_exists(tmp_path);
+        return err;
+    }
+
+    err = cap_scheduler_rotate_state_backup(path, backup_path);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "Rotate runtime state backup failed primary=%s backup=%s err=%s",
+                 path,
+                 backup_path,
+                 esp_err_to_name(err));
+        cap_scheduler_remove_file_if_exists(tmp_path);
+        return err;
+    }
+
+    err = cap_scheduler_promote_state_file(tmp_path, path);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "Promote runtime state temp file failed temp=%s primary=%s err=%s",
+                 tmp_path,
+                 path,
+                 esp_err_to_name(err));
+        cap_scheduler_remove_file_if_exists(tmp_path);
+        return err;
+    }
+
     return ESP_OK;
 }
 
@@ -642,7 +967,7 @@ esp_err_t cap_scheduler_load_state(const char *path,
 
     err = cap_scheduler_read_file(path, &buf);
     if (err == ESP_ERR_NOT_FOUND) {
-        return ESP_OK;
+        return ESP_ERR_NOT_FOUND;
     }
     if (err != ESP_OK) {
         return err;
@@ -734,7 +1059,12 @@ esp_err_t cap_scheduler_save_state(const char *path,
     if (!rendered) {
         return ESP_ERR_NO_MEM;
     }
-    err = cap_scheduler_write_file(path, rendered);
+    err = cap_scheduler_write_state_file(path, rendered);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "Save runtime state failed path=%s err=%s",
+                 path,
+                 esp_err_to_name(err));
+    }
     free(rendered);
     return err;
 }

@@ -17,6 +17,9 @@
 
 #define CAP_SCHEDULER_DEFAULT_SCHEDULES_PATH "/fatfs/data/scheduler/schedules.json"
 #define CAP_SCHEDULER_DEFAULT_STATE_PATH     "/fatfs/data/scheduler/scheduler_state.json"
+#define CAP_SCHEDULER_STATE_TMP_SUFFIX       ".tmp"
+#define CAP_SCHEDULER_STATE_BACKUP_SUFFIX    ".bak"
+#define CAP_SCHEDULER_PATH_BUF_LEN           224
 #define CAP_SCHEDULER_DEFAULT_TIMEZONE       "UTC0"
 #define CAP_SCHEDULER_DEFAULT_TICK_MS        1000
 #define CAP_SCHEDULER_DEFAULT_MAX_ITEMS      32
@@ -78,6 +81,10 @@ esp_err_t cap_scheduler_load_state(const char *path,
 esp_err_t cap_scheduler_save_state(const char *path,
                                    const cap_scheduler_entry_t *entries,
                                    size_t entry_count);
+esp_err_t cap_scheduler_build_aux_path(const char *path,
+                                       const char *suffix,
+                                       char *out_path,
+                                       size_t out_path_size);
 esp_err_t cap_scheduler_entry_to_json(const cap_scheduler_entry_t *entry,
                                       bool include_item,
                                       cJSON **out_json);
