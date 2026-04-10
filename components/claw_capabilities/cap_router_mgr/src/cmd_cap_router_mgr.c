@@ -3,7 +3,7 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  */
-#include "cmd_claw_event_router.h"
+#include "cmd_cap_router_mgr.h"
 
 #include <ctype.h>
 #include <inttypes.h>
@@ -13,8 +13,11 @@
 
 #include "argtable3/argtable3.h"
 #include "cJSON.h"
+#include "claw_cap.h"
 #include "claw_event_router.h"
 #include "esp_console.h"
+
+#define CMD_CAP_ROUTER_MGR_OUTPUT_SIZE 4096
 
 static struct {
     struct arg_lit *reload;
@@ -150,16 +153,68 @@ static esp_err_t event_router_prepare_argv(int argc,
     return ESP_OK;
 }
 
+static int call_router_mgr_cap(const char *cap_name, const char *input_json)
+{
+    char output[CMD_CAP_ROUTER_MGR_OUTPUT_SIZE] = {0};
+    claw_cap_call_context_t ctx = {
+        .caller = CLAW_CAP_CALLER_CONSOLE,
+        .session_id = "default",
+    };
+    esp_err_t err;
+
+    err = claw_cap_call(cap_name, input_json, &ctx, output, sizeof(output));
+    if (err == ESP_OK) {
+        printf("%s\n", output);
+        return 0;
+    }
+
+    printf("%s\n", output[0] ? output : esp_err_to_name(err));
+    return 1;
+}
+
+static char *build_id_json(const char *id)
+{
+    cJSON *root = NULL;
+    char *rendered = NULL;
+
+    root = cJSON_CreateObject();
+    if (!root) {
+        return NULL;
+    }
+
+    cJSON_AddStringToObject(root, "id", id);
+    rendered = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+    return rendered;
+}
+
+static char *build_rule_json_input(const char *rule_json)
+{
+    cJSON *root = NULL;
+    char *rendered = NULL;
+
+    root = cJSON_CreateObject();
+    if (!root) {
+        return NULL;
+    }
+
+    cJSON_AddStringToObject(root, "rule_json", rule_json);
+    rendered = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+    return rendered;
+}
+
 static int event_router_func(int argc, char **argv)
 {
     claw_event_router_result_t result = {0};
-    char *output = NULL;
+    char *input_json = NULL;
     char *joined_value = NULL;
     char **parse_argv = argv;
     int parse_argc = argc;
     esp_err_t err;
     int nerrors;
     int operation_count;
+    int rc;
 
     err = event_router_prepare_argv(argc, argv, &parse_argc, &parse_argv, &joined_value);
     if (err != ESP_OK) {
@@ -168,7 +223,6 @@ static int event_router_func(int argc, char **argv)
     }
 
     nerrors = arg_parse(parse_argc, parse_argv, (void **)&router_args);
-
     if (nerrors != 0) {
         arg_print_errors(stderr, router_args.end, parse_argv[0]);
         free(parse_argv == argv ? NULL : parse_argv);
@@ -188,89 +242,80 @@ static int event_router_func(int argc, char **argv)
         return 1;
     }
 
-    if (router_args.reload->count) {
-        err = claw_event_router_reload();
-        if (err != ESP_OK) {
-            printf("event_router reload failed: %s\n", esp_err_to_name(err));
-            free(parse_argv == argv ? NULL : parse_argv);
-            free(joined_value);
-            return 1;
-        }
-        printf("automation rules reloaded\n");
+    if (router_args.rules->count) {
         free(parse_argv == argv ? NULL : parse_argv);
         free(joined_value);
-        return 0;
+        return call_router_mgr_cap("list_router_rules", "{}");
     }
 
-    if (router_args.rules->count || router_args.rule->count) {
-        output = calloc(1, router_args.rule->count ? 2048 : 4096);
-        if (!output) {
+    if (router_args.rule->count) {
+        input_json = build_id_json(router_args.rule->sval[0]);
+        if (!input_json) {
             printf("Out of memory\n");
             free(parse_argv == argv ? NULL : parse_argv);
             free(joined_value);
             return 1;
         }
 
-        if (router_args.rule->count) {
-            err = claw_event_router_get_rule_json(router_args.rule->sval[0], output, 2048);
-        } else {
-            err = claw_event_router_list_rules_json(output, 4096);
-        }
-        if (err != ESP_OK) {
-            printf("event_router rules failed: %s\n", esp_err_to_name(err));
-            free(output);
-            free(parse_argv == argv ? NULL : parse_argv);
-            free(joined_value);
-            return 1;
-        }
-
-        printf("%s\n", output);
-        free(output);
         free(parse_argv == argv ? NULL : parse_argv);
         free(joined_value);
-        return 0;
+        rc = call_router_mgr_cap("get_router_rule", input_json);
+        free(input_json);
+        return rc;
     }
 
     if (router_args.add_rule_json->count) {
-        err = claw_event_router_add_rule_json(router_args.add_rule_json->sval[0]);
-        if (err != ESP_OK) {
-            printf("event_router add-rule failed: %s\n", esp_err_to_name(err));
+        input_json = build_rule_json_input(router_args.add_rule_json->sval[0]);
+        if (!input_json) {
+            printf("Out of memory\n");
             free(parse_argv == argv ? NULL : parse_argv);
             free(joined_value);
             return 1;
         }
-        printf("automation rule added\n");
+
         free(parse_argv == argv ? NULL : parse_argv);
         free(joined_value);
-        return 0;
+        rc = call_router_mgr_cap("add_router_rule", input_json);
+        free(input_json);
+        return rc;
     }
 
     if (router_args.update_rule_json->count) {
-        err = claw_event_router_update_rule_json(router_args.update_rule_json->sval[0]);
-        if (err != ESP_OK) {
-            printf("event_router update-rule failed: %s\n", esp_err_to_name(err));
+        input_json = build_rule_json_input(router_args.update_rule_json->sval[0]);
+        if (!input_json) {
+            printf("Out of memory\n");
             free(parse_argv == argv ? NULL : parse_argv);
             free(joined_value);
             return 1;
         }
-        printf("automation rule updated\n");
+
         free(parse_argv == argv ? NULL : parse_argv);
         free(joined_value);
-        return 0;
+        rc = call_router_mgr_cap("update_router_rule", input_json);
+        free(input_json);
+        return rc;
     }
 
     if (router_args.delete_rule->count) {
-        err = claw_event_router_delete_rule(router_args.delete_rule->sval[0]);
-        if (err != ESP_OK) {
-            printf("event_router delete-rule failed: %s\n", esp_err_to_name(err));
+        input_json = build_id_json(router_args.delete_rule->sval[0]);
+        if (!input_json) {
+            printf("Out of memory\n");
             free(parse_argv == argv ? NULL : parse_argv);
             free(joined_value);
             return 1;
         }
-        printf("automation rule deleted\n");
+
         free(parse_argv == argv ? NULL : parse_argv);
         free(joined_value);
-        return 0;
+        rc = call_router_mgr_cap("delete_router_rule", input_json);
+        free(input_json);
+        return rc;
+    }
+
+    if (router_args.reload->count) {
+        free(parse_argv == argv ? NULL : parse_argv);
+        free(joined_value);
+        return call_router_mgr_cap("reload_router_rules", "{}");
     }
 
     if (router_args.last->count) {
@@ -349,13 +394,14 @@ static int event_router_func(int argc, char **argv)
             return 1;
         }
         cJSON_Delete(json);
+
+        err = claw_event_router_publish_trigger(router_args.source_cap->sval[0],
+                                                router_args.event_type->sval[0],
+                                                router_args.event_key->sval[0],
+                                                payload_json);
         free(payload_json);
     }
 
-    err = claw_event_router_publish_trigger(router_args.source_cap->sval[0],
-                                            router_args.event_type->sval[0],
-                                            router_args.event_key->sval[0],
-                                            router_args.payload_json->sval[0]);
     if (err != ESP_OK) {
         printf("event_router emit-trigger failed: %s\n", esp_err_to_name(err));
         free(parse_argv == argv ? NULL : parse_argv);
@@ -372,7 +418,7 @@ static int event_router_func(int argc, char **argv)
     return 0;
 }
 
-void register_claw_event_router(void)
+void register_cap_router_mgr(void)
 {
     router_args.reload = arg_lit0(NULL, "reload", "Reload automation rules from disk");
     router_args.rules = arg_lit0(NULL, "rules", "List all automation rules");

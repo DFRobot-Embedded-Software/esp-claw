@@ -21,6 +21,7 @@
 #include "cap_lua.h"
 #include "cap_mcp_client.h"
 #include "cap_mcp_server.h"
+#include "cap_router_mgr.h"
 #include "cap_session_mng.h"
 #include "cap_scheduler.h"
 #include "cap_skill.h"
@@ -39,6 +40,7 @@ static const char *TAG = "app_clawgent";
 static const char *const BASIC_DEMO_LLM_VISIBLE_GROUPS[] = {
     "cap_cli",
     "cap_files",
+    "cap_router_mgr",
     "cap_skill",
 };
 

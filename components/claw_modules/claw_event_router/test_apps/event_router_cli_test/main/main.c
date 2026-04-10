@@ -11,7 +11,9 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
-#include "cmd_claw_event_router.h"
+#include "cap_router_mgr.h"
+#include "cmd_cap_router_mgr.h"
+#include "claw_cap.h"
 #include "claw_event_router.h"
 #include "esp_check.h"
 #include "esp_console.h"
@@ -123,7 +125,15 @@ static esp_err_t init_console(void)
 
     ESP_RETURN_ON_ERROR(esp_console_init(&console_config), TAG, "Failed to init console");
     esp_console_register_help_command();
-    register_claw_event_router();
+    ESP_RETURN_ON_ERROR(claw_cap_init(&(claw_cap_config_t) {
+        .max_capabilities = 8,
+        .max_groups = 2,
+    }),
+    TAG,
+    "Failed to init claw_cap");
+    ESP_RETURN_ON_ERROR(cap_router_mgr_register_group(), TAG, "Failed to register router manager cap");
+    ESP_RETURN_ON_ERROR(claw_cap_start_all(), TAG, "Failed to start capabilities");
+    register_cap_router_mgr();
     return ESP_OK;
 }
 
@@ -257,7 +267,7 @@ static bool run_smoke_suite(void)
                            "\"match\":{\"event_type\":\"message\",\"event_key\":\"text\",\"content_type\":\"text\","
                            "\"source_cap\":\"test_source\",\"source_channel\":\"cli\",\"chat_id\":\"room1\","
                            "\"text\":\"hello_router\"},\"actions\":[{\"type\":\"drop\"}]}",
-                           "automation rule added",
+                           "\"ok\":true",
                            NULL,
                            0) && ok;
 
@@ -273,13 +283,13 @@ static bool run_smoke_suite(void)
                            "\"match\":{\"event_type\":\"message\",\"event_key\":\"text\",\"content_type\":\"text\","
                            "\"source_cap\":\"test_source\",\"source_channel\":\"cli\",\"chat_id\":\"room1\","
                            "\"text\":\"hello_router\"},\"actions\":[{\"type\":\"drop\"}]}",
-                           "automation rule updated",
+                           "\"ok\":true",
                            NULL,
                            0) && ok;
 
     ok = run_cli_and_check("reload_rules",
                            "event_router --reload",
-                           "automation rules reloaded",
+                           "\"action\":\"reload_router_rules\"",
                            NULL,
                            0) && ok;
 
@@ -301,7 +311,7 @@ static bool run_smoke_suite(void)
                            "{\"id\":\"trigger_drop\",\"description\":\"drop_trigger\",\"ack\":\"trigger_ack\","
                            "\"match\":{\"event_type\":\"doorbell\",\"event_key\":\"ding\",\"source_cap\":\"test_source\"},"
                            "\"actions\":[{\"type\":\"drop\"}]}",
-                           "automation rule added",
+                           "\"ok\":true",
                            NULL,
                            0) && ok;
 
@@ -320,13 +330,13 @@ static bool run_smoke_suite(void)
 
     ok = run_cli_and_check("delete_message_rule",
                            "event_router --delete-rule msg_drop",
-                           "automation rule deleted",
+                           "\"action\":\"delete_router_rule\"",
                            NULL,
                            0) && ok;
 
     ok = run_cli_and_check("delete_trigger_rule",
                            "event_router --delete-rule trigger_drop",
-                           "automation rule deleted",
+                           "\"action\":\"delete_router_rule\"",
                            NULL,
                            0) && ok;
 

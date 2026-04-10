@@ -4,7 +4,9 @@ idf_component_register(
     INCLUDE_DIRS
         "."
     REQUIRES
+        cap_router_mgr
         claw_event_router
+        claw_cap
         console
         fatfs
         json

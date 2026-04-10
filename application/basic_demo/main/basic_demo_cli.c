@@ -14,13 +14,13 @@
 #include "cmd_cap_llm_inspect.h"
 #include "cmd_cap_mcp_client.h"
 #include "cmd_cap_mcp_server.h"
+#include "cmd_cap_router_mgr.h"
 #include "cmd_cap_im_qq.h"
 #include "cmd_cap_im_tg.h"
 #include "cmd_cap_im_wechat.h"
 #include "cmd_cap_lua.h"
 #include "cmd_cap_time.h"
 #include "cmd_cap_web_search.h"
-#include "cmd_claw_event_router.h"
 #include "claw_cap.h"
 #include "claw_core.h"
 #include "claw_event_router.h"
@@ -698,7 +698,7 @@ esp_err_t basic_demo_cli_start(void)
     register_cap_scheduler();
     register_cap_time();
     register_cap_web_search();
-    register_claw_event_router();
+    register_cap_router_mgr();
 
     {
         esp_console_cmd_t ask_cmd = {

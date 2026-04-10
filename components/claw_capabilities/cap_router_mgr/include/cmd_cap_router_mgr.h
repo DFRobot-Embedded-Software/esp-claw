@@ -9,7 +9,7 @@
 extern "C" {
 #endif
 
-void register_claw_event_router(void);
+void register_cap_router_mgr(void);
 
 #ifdef __cplusplus
 }
