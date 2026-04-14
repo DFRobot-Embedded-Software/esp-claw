@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/time.h>
 
 #include "cJSON.h"
 #include "esp_log.h"
@@ -17,6 +18,7 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 
+#include "claw_event_router.h"
 #include "claw_core_llm.h"
 
 static const char *TAG = "claw_core";
@@ -304,6 +306,141 @@ static void move_response_item(claw_core_response_t *dst, claw_core_response_ite
     memset(dst, 0, sizeof(*dst));
     *dst = src->view;
     memset(src, 0, sizeof(*src));
+}
+
+static int64_t claw_core_now_ms(void)
+{
+    struct timeval tv = {0};
+
+    gettimeofday(&tv, NULL);
+    return ((int64_t)tv.tv_sec * 1000LL) + (tv.tv_usec / 1000LL);
+}
+
+static esp_err_t build_response_payload_json(const claw_core_request_t *request,
+                                             const claw_core_response_t *response,
+                                             char **out_payload_json)
+{
+    cJSON *root = NULL;
+    char *payload_json = NULL;
+
+    if (!request || !response || !out_payload_json) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    *out_payload_json = NULL;
+
+    root = cJSON_CreateObject();
+    if (!root) {
+        return ESP_ERR_NO_MEM;
+    }
+
+    if (!cJSON_AddNumberToObject(root, "request_id", (double)request->request_id) ||
+            !cJSON_AddStringToObject(root,
+                                     "status",
+                                     response->status == CLAW_CORE_RESPONSE_STATUS_OK ? "ok" : "error")) {
+        cJSON_Delete(root);
+        return ESP_ERR_NO_MEM;
+    }
+
+    payload_json = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+    if (!payload_json) {
+        return ESP_ERR_NO_MEM;
+    }
+
+    *out_payload_json = payload_json;
+    return ESP_OK;
+}
+
+static esp_err_t build_agent_response_event(const claw_core_request_t *request,
+                                            const claw_core_response_t *response,
+                                            claw_event_t *out_event,
+                                            char **out_payload_json)
+{
+    const char *channel = NULL;
+    const char *chat_id = NULL;
+    int64_t now_ms;
+    esp_err_t err;
+
+    if (!request || !response || !out_event || !out_payload_json ||
+            response->status != CLAW_CORE_RESPONSE_STATUS_OK ||
+            !response->text || !response->text[0]) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    memset(out_event, 0, sizeof(*out_event));
+    *out_payload_json = NULL;
+
+    err = build_response_payload_json(request, response, out_payload_json);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    now_ms = claw_core_now_ms();
+    channel = (response->target_channel && response->target_channel[0]) ?
+              response->target_channel : request->source_channel;
+    chat_id = (response->target_chat_id && response->target_chat_id[0]) ?
+              response->target_chat_id : request->source_chat_id;
+
+    snprintf(out_event->event_id, sizeof(out_event->event_id),
+             "agent-%" PRIu32 "-%" PRId64,
+             request->request_id,
+             now_ms);
+    strlcpy(out_event->source_cap, "claw_core", sizeof(out_event->source_cap));
+    strlcpy(out_event->event_type, "agent_response", sizeof(out_event->event_type));
+    strlcpy(out_event->source_channel, channel ? channel : "", sizeof(out_event->source_channel));
+    strlcpy(out_event->chat_id, chat_id ? chat_id : "", sizeof(out_event->chat_id));
+    strlcpy(out_event->content_type, "text", sizeof(out_event->content_type));
+    snprintf(out_event->message_id, sizeof(out_event->message_id),
+             "agent-%" PRIu32,
+             request->request_id);
+    if (request->source_message_id && request->source_message_id[0]) {
+        strlcpy(out_event->correlation_id,
+                request->source_message_id,
+                sizeof(out_event->correlation_id));
+    } else {
+        snprintf(out_event->correlation_id, sizeof(out_event->correlation_id),
+                 "%" PRIu32,
+                 request->request_id);
+    }
+    out_event->timestamp_ms = now_ms;
+    out_event->session_policy = CLAW_EVENT_SESSION_POLICY_CHAT;
+    out_event->text = response->text;
+    out_event->payload_json = *out_payload_json;
+
+    return ESP_OK;
+}
+
+static void publish_response_event_if_requested(const claw_core_request_item_t *request,
+                                                const claw_core_response_item_t *response)
+{
+    claw_event_t event = {0};
+    char *payload_json = NULL;
+    esp_err_t err;
+
+    if (!request || !response ||
+            !(request->view.flags & CLAW_CORE_REQUEST_FLAG_PUBLISH_RESPONSE_EVENT)) {
+        return;
+    }
+    if (response->view.status != CLAW_CORE_RESPONSE_STATUS_OK ||
+            !response->view.text || !response->view.text[0]) {
+        return;
+    }
+
+    err = build_agent_response_event(&request->view,
+                                     &response->view,
+                                     &event,
+                                     &payload_json);
+    if (err == ESP_OK) {
+        err = claw_event_router_publish(&event);
+    }
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG,
+                 "Failed to publish response event for request_id=%" PRIu32 ": %s",
+                 request->view.request_id,
+                 esp_err_to_name(err));
+    }
+
+    free(payload_json);
 }
 
 static esp_err_t append_user_message(cJSON *messages, const char *text)
@@ -859,7 +996,10 @@ static void claw_core_task(void *arg)
         }
 
 finish_request:
-        if (push_response(&response) != ESP_OK) {
+        publish_response_event_if_requested(&request, &response);
+        if (request.view.flags & CLAW_CORE_REQUEST_FLAG_SKIP_RESPONSE_QUEUE) {
+            free_response_item(&response);
+        } else if (push_response(&response) != ESP_OK) {
             ESP_LOGE(TAG, "Failed to enqueue response for request_id=%" PRIu32, request.view.request_id);
             free_response_item(&response);
         }
@@ -1053,6 +1193,7 @@ esp_err_t claw_core_submit(const claw_core_request_t *request, uint32_t timeout_
     }
 
     item.view.request_id = request->request_id;
+    item.view.flags = request->flags;
     item.owned_session_id = dup_string(request->session_id);
     item.owned_user_text = dup_string(request->user_text);
     item.owned_source_channel = dup_string(request->source_channel);

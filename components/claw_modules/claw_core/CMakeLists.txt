@@ -16,4 +16,6 @@ idf_component_register(
         esp-tls
         json
         mbedtls
+    PRIV_REQUIRES
+        claw_event_router
 )
