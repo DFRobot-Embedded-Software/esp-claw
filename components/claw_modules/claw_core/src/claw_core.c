@@ -442,7 +442,7 @@ static void publish_response_event_if_requested(const claw_core_request_item_t *
 
     free(payload_json);
 }
-
+#if CONFIG_CLAW_CORE_STAGE_VERBOSITY_VERBOSE
 static void publish_stage_event(const claw_core_request_t *request, const char *text)
 {
     claw_event_t event = {0};
@@ -477,6 +477,7 @@ static void publish_stage_event(const claw_core_request_t *request, const char *
                  request->request_id, esp_err_to_name(pub_err));
     }
 }
+#endif
 
 static void publish_stage_tool_calls(const claw_core_request_t *request,
                                      const claw_core_llm_response_t *response,
