@@ -14,7 +14,6 @@ Use this skill when the user needs the current real-world time from the network,
 - The callable capability exposed to the agent is `get_current_time`.
 - It takes an empty input object.
 - It returns formatted plain text such as local date, time, timezone, and weekday.
-- There is also device-side support for setting timezone through `cap_time_set_timezone(...)` and the `time --set-timezone` CLI command, but that is not currently exposed as a callable LLM capability.
 
 ## Calling rules
 - Call `get_current_time` directly when the user needs real current time.
@@ -25,7 +24,6 @@ Use this skill when the user needs the current real-world time from the network,
 ```
 
 - Prefer this capability over guessing from model knowledge when the exact current time matters.
-- Do not claim a timezone change was performed through this skill unless some other runtime path explicitly handled it.
 
 ## Output behavior
 - On success, the capability returns formatted local time text.
@@ -35,18 +33,14 @@ Use this skill when the user needs the current real-world time from the network,
 
 ## Timezone notes
 - The returned time is formatted using the device's currently configured timezone.
-- Default timezone in the component is `UTC0` until changed elsewhere.
-- If the user asks to change timezone, do not pretend `get_current_time` can do it. Use an explicit non-LLM control path if available.
 
 ## Recommended workflow
 1. Decide whether the user needs real current time or just a stable explanation about time handling.
 2. Call `get_current_time` with `{}`.
 3. Return the formatted result to the user.
-4. If the user also needs timezone reconfiguration, handle that separately from this skill.
 
 ## Common failure causes
 - Expecting `get_current_time` to accept parameters; it does not.
-- Expecting this skill alone to change timezone.
 - Calling it when network access is unavailable, causing sync failure.
 
 ## Examples

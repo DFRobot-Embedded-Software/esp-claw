@@ -12,6 +12,7 @@
 #include "config_http_server.h"
 #include "esp_err.h"
 #include "esp_log.h"
+#include "time.h"
 #include "esp_vfs_fat.h"
 #include "freertos/task.h"
 #include "nvs_flash.h"
@@ -85,6 +86,32 @@ static esp_err_t init_fatfs(void)
     return ESP_OK;
 }
 
+static esp_err_t init_timezone(const char *timezone)
+{
+    esp_err_t err = ESP_OK;
+
+    if (!timezone || timezone[0] == '\0') {
+        ESP_LOGE(TAG, "Timezone is empty.");
+        err = ESP_ERR_INVALID_ARG;
+        goto tz_default;
+    }
+
+    if (setenv("TZ", timezone, 1) != 0) {
+        ESP_LOGE(TAG, "Failed to set TZ env");
+        err = ESP_FAIL;
+        goto tz_default;
+    }
+    tzset();
+    ESP_LOGI(TAG, "Timezone set to %s", timezone);
+    return ESP_OK;
+
+tz_default:
+    assert(setenv("TZ", "CST-8", 1) == 0);
+    tzset();
+    ESP_LOGI(TAG, "Timezone set to default: CST-8");
+    return err;
+}
+
 #if BASIC_DEMO_ENABLE_MEM_LOG
 
 static void print_task_stack_info(void)
@@ -129,6 +156,7 @@ void app_main(void)
     ESP_ERROR_CHECK(init_nvs());
     ESP_ERROR_CHECK(basic_demo_settings_init());
     ESP_ERROR_CHECK(basic_demo_settings_load(&s_settings));
+    init_timezone(s_settings.time_timezone); // no need to check error
     ESP_ERROR_CHECK(esp_board_manager_init());
 #if defined(CONFIG_BASIC_DEMO_ENABLE_EMOTE)
     ESP_ERROR_CHECK(app_expression_emote_start());

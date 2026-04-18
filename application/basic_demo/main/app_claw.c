@@ -185,7 +185,6 @@ static esp_err_t init_capabilities(const basic_demo_settings_t *settings, const 
 
     ESP_RETURN_ON_ERROR(claw_cap_init(&cap_config), TAG, "Failed to init claw_cap");
 
-    ESP_RETURN_ON_ERROR(cap_time_set_timezone(settings->time_timezone), TAG, "Failed to set time cap timezone");
     ESP_RETURN_ON_ERROR(cap_files_set_base_dir(basic_demo_fatfs_base_path), TAG, "Failed to set files cap base dir");
     ESP_RETURN_ON_ERROR(cap_lua_set_base_dir(paths->lua_root_dir), TAG, "Failed to set Lua base dir");
     ESP_RETURN_ON_ERROR(cap_im_qq_set_attachment_config(&(cap_im_qq_attachment_config_t){

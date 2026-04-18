@@ -26,6 +26,7 @@ static const char *TAG = "cap_time";
 #define CAP_TIME_SOURCE_URL     "https://api.telegram.org/"
 #define CAP_TIME_HTTP_TIMEOUT_MS 10000
 #define CAP_TIME_MIN_VALID_EPOCH 1704067200
+#define CAP_TIME_UTC_TIMEZONE "UTC0"
 #define CAP_TIME_DEFAULT_DISCONNECTED_RETRY_MS 5000
 #define CAP_TIME_DEFAULT_SYNC_RETRY_MS        30000
 #define CAP_TIME_SYNC_TASK_STACK_SIZE          4096
@@ -37,13 +38,10 @@ static const char *s_month_names[] = {
 };
 
 typedef struct {
-    char timezone[64];
     char date_header[64];
 } cap_time_state_t;
 
-static cap_time_state_t s_time = {
-    .timezone = "UTC0",
-};
+static cap_time_state_t s_time = {0};
 static SemaphoreHandle_t s_time_mutex = NULL;
 static struct {
     TaskHandle_t task_handle;
@@ -76,6 +74,23 @@ static int cap_time_month_to_index(const char *month)
     return -1;
 }
 
+static esp_err_t cap_time_read_timezone(char *timezone, size_t timezone_size)
+{
+    const char *configured_tz = NULL;
+
+    if (!timezone || timezone_size == 0) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    configured_tz = getenv("TZ");
+    if (configured_tz && configured_tz[0]) {
+        strlcpy(timezone, configured_tz, timezone_size);
+        return ESP_OK;
+    }
+
+    return ESP_ERR_INVALID_STATE;
+}
+
 static bool cap_time_parse_and_set_clock(const char *date_header,
                                          char *output,
                                          size_t output_size)
@@ -90,6 +105,8 @@ static bool cap_time_parse_and_set_clock(const char *date_header,
     struct tm utc_tm = {0};
     struct timeval tv = {0};
     struct tm local_tm = {0};
+    char local_tz[64] = {0};
+    bool ok = false;
     time_t epoch;
 
     if (!date_header || !output || output_size == 0) {
@@ -119,26 +136,37 @@ static bool cap_time_parse_and_set_clock(const char *date_header,
     utc_tm.tm_min = minute;
     utc_tm.tm_sec = second;
 
-    setenv("TZ", "UTC0", 1);
+    if (cap_time_read_timezone(local_tz, sizeof(local_tz)) != ESP_OK) {
+        return false;
+    }
+
+    if (setenv("TZ", CAP_TIME_UTC_TIMEZONE, 1) != 0) {
+        return false;
+    }
     tzset();
     epoch = mktime(&utc_tm);
     if (epoch < 0) {
-        return false;
+        goto done;
     }
 
     tv.tv_sec = epoch;
     if (settimeofday(&tv, NULL) != 0) {
-        return false;
+        goto done;
     }
 
-    setenv("TZ", s_time.timezone[0] ? s_time.timezone : "UTC0", 1);
+    setenv("TZ", local_tz, 1);
     tzset();
     localtime_r(&epoch, &local_tm);
     if (strftime(output, output_size, "%Y-%m-%d %H:%M:%S %Z (%A)", &local_tm) == 0) {
-        return false;
+        goto done;
     }
 
-    return true;
+    ok = true;
+
+done:
+    setenv("TZ", local_tz, 1);
+    tzset();
+    return ok;
 }
 
 static esp_err_t cap_time_http_event_handler(esp_http_client_event_t *event)
@@ -209,6 +237,21 @@ esp_err_t cap_time_sync_now(char *output, size_t output_size)
     ESP_RETURN_ON_ERROR(cap_time_ensure_mutex(), TAG, "Failed to create time mutex");
     xSemaphoreTake(s_time_mutex, portMAX_DELAY);
     err = cap_time_fetch_current(output, output_size);
+    xSemaphoreGive(s_time_mutex);
+    return err;
+}
+
+esp_err_t cap_time_get_timezone(char *timezone, size_t timezone_size)
+{
+    esp_err_t err;
+
+    if (!timezone || timezone_size == 0) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    ESP_RETURN_ON_ERROR(cap_time_ensure_mutex(), TAG, "Failed to create time mutex");
+    xSemaphoreTake(s_time_mutex, portMAX_DELAY);
+    err = cap_time_read_timezone(timezone, timezone_size);
     xSemaphoreGive(s_time_mutex);
     return err;
 }
@@ -332,26 +375,6 @@ esp_err_t cap_time_register_group(void)
     }
 
     return claw_cap_register_group(&s_time_group);
-}
-
-esp_err_t cap_time_set_timezone(const char *timezone)
-{
-    esp_err_t err;
-
-    if (!timezone || !timezone[0]) {
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    err = cap_time_ensure_mutex();
-    if (err != ESP_OK) {
-        return err;
-    }
-    xSemaphoreTake(s_time_mutex, portMAX_DELAY);
-    strlcpy(s_time.timezone, timezone, sizeof(s_time.timezone));
-    setenv("TZ", s_time.timezone, 1);
-    tzset();
-    xSemaphoreGive(s_time_mutex);
-    return ESP_OK;
 }
 
 esp_err_t cap_time_sync_service_start(const cap_time_sync_service_config_t *config)

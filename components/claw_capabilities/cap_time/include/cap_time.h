@@ -28,8 +28,8 @@ typedef struct {
 } cap_time_sync_service_config_t;
 
 esp_err_t cap_time_register_group(void);
-// TODO: add cap_time_get_timezone and improve the workflow of cap_scheduler skill
-esp_err_t cap_time_set_timezone(const char *timezone);
+// TODO: improve the workflow of cap_scheduler skill
+esp_err_t cap_time_get_timezone(char *timezone, size_t timezone_size);
 esp_err_t cap_time_sync_now(char *output, size_t output_size);
 bool cap_time_is_valid(void);
 esp_err_t cap_time_sync_service_start(const cap_time_sync_service_config_t *config);
