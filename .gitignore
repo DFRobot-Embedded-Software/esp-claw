@@ -39,3 +39,10 @@ references/
 .codex
 openspec
 AGENTS.md
+
+# Docs
+docs/node_modules
+docs/public/d2
+docs/dist
+docs/.astro
+docs/**/*.bin

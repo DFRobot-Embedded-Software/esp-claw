@@ -525,6 +525,7 @@ select option {
   max-width: 200px;
   width: 100%;
   margin: 0 auto;
+  image-rendering: pixelated;
 }
 
 .wechat-login-note {
@@ -535,6 +536,8 @@ select option {
 }
 
 .wechat-login-link {
+  display: table;
+  margin: 0.35rem auto 0;
   color: var(--accent-soft);
   text-decoration: none;
   font-size: 0.82rem;
@@ -767,6 +770,13 @@ select option {
   color: var(--text-primary);
 }
 
+.memory-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
 .memory-inline-empty {
   border: 1px dashed var(--border);
   border-radius: var(--radius-sm);
@@ -820,6 +830,9 @@ select option {
 
 .file-toolbar-right {
   margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .file-path {
@@ -946,6 +959,17 @@ td.actions {
   border-radius: var(--radius-sm);
   transition: background 0.12s, color 0.12s;
   text-decoration: none;
+}
+
+.link-btn:disabled {
+  color: var(--text-muted);
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.link-btn:disabled:hover {
+  background: none;
+  color: var(--text-muted);
 }
 
 .action-slot {

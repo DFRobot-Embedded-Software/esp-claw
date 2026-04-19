@@ -6,6 +6,24 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title data-i18n-title="docTitle">ESP-Claw Settings</title>
   <link rel="stylesheet" href="/styles.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "lean-qr": "/lean-qr.min.mjs"
+      }
+    }
+  </script>
+  <script type="module">
+    import { generate } from "lean-qr";
+
+    window.renderWechatQr = (canvas, content) => {
+      if (!canvas || !content) {
+        return;
+      }
+      const code = generate(content);
+      code.toCanvas(canvas);
+    };
+  </script>
 </head>
 
 <body>
@@ -129,6 +147,32 @@
                   <input type="text" id="llm_timeout_ms" name="llm_timeout_ms" data-i18n-placeholder="llmTimeoutPlaceholder">
                 </div>
               </div>
+              <details class="advanced-section" style="margin-top: 0.85rem;">
+                <summary>
+                  <span data-i18n="llmAdvanced">LLM Advanced Options</span>
+                  <svg class="adv-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+                </summary>
+                <div class="advanced-body">
+                  <div class="form-grid">
+                    <div class="form-group">
+                      <label for="llm_backend_type" data-i18n="llmBackend">Backend Type</label>
+                      <input type="text" id="llm_backend_type" name="llm_backend_type" data-i18n-placeholder="llmBackendPlaceholder">
+                    </div>
+                    <div class="form-group">
+                      <label for="llm_profile" data-i18n="llmProfile">Profile</label>
+                      <input type="text" id="llm_profile" name="llm_profile" data-i18n-placeholder="llmProfilePlaceholder">
+                    </div>
+                    <div class="form-group">
+                      <label for="llm_base_url" data-i18n="llmBaseUrl">Base URL</label>
+                      <input type="url" id="llm_base_url" name="llm_base_url" data-i18n-placeholder="llmBaseUrlPlaceholder">
+                    </div>
+                    <div class="form-group">
+                      <label for="llm_auth_type" data-i18n="llmAuthType">Auth Type</label>
+                      <input type="text" id="llm_auth_type" name="llm_auth_type" data-i18n-placeholder="llmAuthTypePlaceholder">
+                    </div>
+                  </div>
+                </div>
+              </details>
             </div>
           </details>
 
@@ -156,7 +200,7 @@
                     </div>
                     <div id="wechatLoginBanner" class="banner"></div>
                     <p id="wechatLoginMeta" class="section-note" data-i18n="wechatLoginStatus">Status: idle</p>
-                    <img id="wechatLoginQr" class="wechat-qr hidden" alt="WeChat QR code">
+                    <canvas id="wechatLoginQr" class="wechat-qr hidden" aria-label="WeChat QR code"></canvas>
                     <p><a id="wechatLoginQrLink" class="wechat-login-link hidden" target="_blank" rel="noopener noreferrer" data-i18n="wechatLoginOpenLink">Open login link</a></p>
                     <div class="form-grid" style="margin-top: 0.85rem;">
                       <div class="form-group">
@@ -239,14 +283,14 @@
             </div>
           </details>
 
-          <!-- Search Settings (default collapsed) -->
-          <details class="config-section" id="section-search">
+          <!-- Search Settings (default open) -->
+          <details class="config-section" id="section-search" open>
             <summary class="section-header">
               <span class="section-title" data-i18n="sectionSearch">Search (Optional)</span>
               <svg class="section-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
             </summary>
             <div class="section-body">
-              <p class="section-note" data-i18n="searchNote">If set, ESP-Claw can search online.</p>
+              <p class="section-note" data-i18n="searchNote">If set, ESP-Claw can search online. Tip: Built-in weather skill also relies on online search.</p>
               <div class="form-grid">
                 <div class="form-group">
                   <label for="search_brave_key" data-i18n="searchBraveKey">Brave Search API Key</label>
@@ -277,32 +321,6 @@
                   <input type="text" id="lua_base_dir" name="lua_base_dir">
                 </div>
               </div>
-              <details class="advanced-section" style="margin-top: 0.85rem;">
-                <summary>
-                  <span data-i18n="llmAdvanced">LLM Advanced Options</span>
-                  <svg class="adv-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
-                </summary>
-                <div class="advanced-body">
-                  <div class="form-grid">
-                    <div class="form-group">
-                      <label for="llm_backend_type" data-i18n="llmBackend">Backend Type</label>
-                      <input type="text" id="llm_backend_type" name="llm_backend_type" data-i18n-placeholder="llmBackendPlaceholder">
-                    </div>
-                    <div class="form-group">
-                      <label for="llm_profile" data-i18n="llmProfile">Profile</label>
-                      <input type="text" id="llm_profile" name="llm_profile" data-i18n-placeholder="llmProfilePlaceholder">
-                    </div>
-                    <div class="form-group">
-                      <label for="llm_base_url" data-i18n="llmBaseUrl">Base URL</label>
-                      <input type="url" id="llm_base_url" name="llm_base_url" data-i18n-placeholder="llmBaseUrlPlaceholder">
-                    </div>
-                    <div class="form-group">
-                      <label for="llm_auth_type" data-i18n="llmAuthType">Auth Type</label>
-                      <input type="text" id="llm_auth_type" name="llm_auth_type" data-i18n-placeholder="llmAuthTypePlaceholder">
-                    </div>
-                  </div>
-                </div>
-              </details>
             </div>
           </details>
 
@@ -321,65 +339,68 @@
             <div class="memory-header">
               <div>
                 <h2 class="memory-title" data-i18n="memoryTitle">Memory Files</h2>
-                <p class="memory-note" data-i18n="memoryDescription">Manage the device memory files under /memory.</p>
+                <p class="memory-note" data-i18n="memoryDescription">Manage the device memory files.</p>
               </div>
               <div class="memory-toolbar">
-                <code class="file-path">/memory</code>
-                <button type="button" class="btn-secondary btn-sm" id="refreshMemoryButton" data-i18n="memoryRefresh">Refresh</button>
+                <button type="button" class="btn-secondary btn-sm" id="refreshMemoryButton" data-i18n="memoryRefreshAll">Refresh All</button>
               </div>
             </div>
 
             <div class="memory-grid">
               <section class="memory-card">
                 <div class="memory-card-header">
-                  <h3 class="memory-card-title" data-i18n="memoryCardLongTerm">Long-term Memory / 长期记忆</h3>
-                  <code class="file-path">/memory/memory.md</code>
+                  <h3 class="memory-card-title" data-i18n="memoryCardLongTerm">Long-term Memory</h3>
+                  <div class="memory-card-actions">
+                    <button type="button" class="btn-secondary btn-sm memory-refresh-btn" data-path="/memory/memory.md" data-i18n="memoryRefresh">Refresh</button>
+                  </div>
                 </div>
                 <div id="memoryMissingState" class="memory-inline-empty hidden">
                   <p class="memory-note" data-i18n="memoryMissing">Long-term memory file does not exist yet.</p>
-                  <button type="button" class="btn-secondary btn-sm" id="createMemoryButton" data-i18n="memoryCreate">Create</button>
                 </div>
                 <textarea id="memoryEditor" class="memory-editor hidden" spellcheck="false"></textarea>
               </section>
 
               <section class="memory-card">
                 <div class="memory-card-header">
-                  <h3 class="memory-card-title">Soul / 灵魂</h3>
-                  <code class="file-path">/memory/soul.md</code>
+                  <h3 class="memory-card-title" data-i18n="memoryCardSoul">Soul</h3>
+                  <div class="memory-card-actions">
+                    <button type="button" class="btn-secondary btn-sm memory-refresh-btn" data-path="/memory/soul.md" data-i18n="memoryRefresh">Refresh</button>
+                    <button type="button" class="btn-secondary btn-sm memory-edit-btn" data-path="/memory/soul.md" data-i18n="fileEdit">Edit</button>
+                  </div>
                 </div>
                 <div id="soulMissingState" class="memory-inline-empty hidden">
-                  <p class="memory-note" data-i18n="memoryAuxMissing">This file does not exist yet.</p>
-                  <button type="button" class="btn-secondary btn-sm memory-init-btn" data-editor="soulEditor" data-i18n="memoryCreateEmpty">Create</button>
+                  <p class="memory-note" data-i18n="memoryAuxMissing">Memory file does not exist yet.</p>
                 </div>
                 <textarea id="soulEditor" class="memory-editor memory-editor-sm hidden" spellcheck="false"></textarea>
               </section>
 
               <section class="memory-card">
                 <div class="memory-card-header">
-                  <h3 class="memory-card-title">Identity / 身份</h3>
-                  <code class="file-path">/memory/identity.md</code>
+                  <h3 class="memory-card-title" data-i18n="memoryCardIdentity">Identity</h3>
+                  <div class="memory-card-actions">
+                    <button type="button" class="btn-secondary btn-sm memory-refresh-btn" data-path="/memory/identity.md" data-i18n="memoryRefresh">Refresh</button>
+                    <button type="button" class="btn-secondary btn-sm memory-edit-btn" data-path="/memory/identity.md" data-i18n="fileEdit">Edit</button>
+                  </div>
                 </div>
                 <div id="identityMissingState" class="memory-inline-empty hidden">
-                  <p class="memory-note" data-i18n="memoryAuxMissing">This file does not exist yet.</p>
-                  <button type="button" class="btn-secondary btn-sm memory-init-btn" data-editor="identityEditor" data-i18n="memoryCreateEmpty">Create</button>
+                  <p class="memory-note" data-i18n="memoryAuxMissing">Memory file does not exist yet.</p>
                 </div>
                 <textarea id="identityEditor" class="memory-editor memory-editor-sm hidden" spellcheck="false"></textarea>
               </section>
 
               <section class="memory-card">
                 <div class="memory-card-header">
-                  <h3 class="memory-card-title">User Info / 用户信息</h3>
-                  <code class="file-path">/memory/user.md</code>
+                  <h3 class="memory-card-title" data-i18n="memoryCardUserInfo">User Info</h3>
+                  <div class="memory-card-actions">
+                    <button type="button" class="btn-secondary btn-sm memory-refresh-btn" data-path="/memory/user.md" data-i18n="memoryRefresh">Refresh</button>
+                    <button type="button" class="btn-secondary btn-sm memory-edit-btn" data-path="/memory/user.md" data-i18n="fileEdit">Edit</button>
+                  </div>
                 </div>
                 <div id="userMissingState" class="memory-inline-empty hidden">
-                  <p class="memory-note" data-i18n="memoryAuxMissing">This file does not exist yet.</p>
-                  <button type="button" class="btn-secondary btn-sm memory-init-btn" data-editor="userEditor" data-i18n="memoryCreateEmpty">Create</button>
+                  <p class="memory-note" data-i18n="memoryAuxMissing">Memory file does not exist yet.</p>
                 </div>
                 <textarea id="userEditor" class="memory-editor memory-editor-sm hidden" spellcheck="false"></textarea>
               </section>
-            </div>
-            <div class="memory-actions">
-              <button type="button" class="btn-primary" id="saveMemoryButton" data-i18n="memorySave">Save Memory</button>
             </div>
           </div>
         </div>
@@ -394,18 +415,20 @@
                 Level</button>
               <code class="file-path" id="currentPath">/</code>
               <div class="file-toolbar-right">
+                <button type="button" class="btn-secondary btn-sm" id="devModeButton"
+                  data-i18n="fileDevMode">Dev Mode</button>
                 <button type="button" class="btn-secondary btn-sm" id="refreshFilesButton"
                   data-i18n="fileRefresh">Refresh</button>
               </div>
             </div>
 
-            <div class="file-create-row">
+            <div class="file-create-row" id="fileCreateRow">
               <input type="text" id="newFolderInput" data-i18n-placeholder="fileNewFolder">
               <button type="button" class="btn-secondary btn-sm" id="createFolderButton"
                 data-i18n="fileCreateFolder">Create Folder</button>
             </div>
 
-            <div class="file-upload-row">
+            <div class="file-upload-row" id="fileUploadRow">
               <input type="text" id="uploadPathInput" data-i18n-placeholder="fileUploadPath">
               <div class="file-picker">
                 <input type="file" id="uploadFileInput">

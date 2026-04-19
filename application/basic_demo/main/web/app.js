@@ -72,7 +72,8 @@ const strings = {
     wechatLoginOpenLink: "Open login link",
 
     sectionSearch: "Search (Optional)",
-    searchNote: "If set, ESP-Claw can search online.",
+    searchNote:
+      "If set, ESP-Claw can search online. Tip: Built-in weather skill also relies on online search.",
     searchBraveKey: "Brave Search API Key",
     searchTavilyKey: "Tavily API Key",
 
@@ -85,18 +86,15 @@ const strings = {
     saveSuccess: "Settings saved",
     saveError: "Failed to save settings",
     memoryTitle: "Memory Files",
-    memoryDescription: "Manage the device memory files under /memory.",
-    memoryCardLongTerm: "Long-term Memory / 长期记忆",
+    memoryDescription: "Manage the device memory files.",
+    memoryCardLongTerm: "Long-term Memory",
+    memoryCardSoul: "Soul",
+    memoryCardIdentity: "Identity",
+    memoryCardUserInfo: "User Info",
     memoryMissing: "Long-term memory file does not exist yet.",
-    memoryCreate: "Create",
-    memorySave: "Save Memory",
+    memoryRefreshAll: "Refresh All",
     memoryRefresh: "Refresh",
-    memoryAuxMissing: "This file does not exist yet.",
-    memoryCreateEmpty: "Create",
-    memoryCreateConfirm: "Memory does not exist. Create /memory/memory.md now?",
-    memoryCreated: "Memory created",
-    memoryEmptyCreated: "Empty file created",
-    memorySaved: "Memory saved",
+    memoryAuxMissing: "Memory file does not exist yet.",
     memoryRefreshed: "Memory reloaded",
     memoryLoadError: "Failed to load memory",
     memorySaveError: "Failed to save memory",
@@ -120,8 +118,13 @@ const strings = {
     fileEmpty: "This folder is empty.",
     fileOpen: "Open",
     fileEdit: "Edit",
+    filePreview: "Preview",
     fileDownload: "Download",
     fileDelete: "Delete",
+    fileDevMode: "Dev Mode",
+    fileDevModeRequired: "Enable Dev Mode to modify files.",
+    fileDevModeConfirm:
+      "After entering Dev Mode, you can upload, modify, or delete files. Incorrect changes may cause the system to fail, reboot endlessly, or behave unexpectedly. Please proceed carefully.",
     fileDeleteConfirm: "Delete {path}?",
     fileUploadComplete: "Upload completed",
     fileFolderCreated: "Folder created",
@@ -200,7 +203,8 @@ const strings = {
     wechatLoginOpenLink: "打开登录链接",
 
     sectionSearch: "搜索（可选）",
-    searchNote: "如填写，ESP-Claw 可在运行中检索在线资源。",
+    searchNote:
+      "如填写，ESP-Claw 可在运行中检索在线资源。提示：系统自带的天气 Skill 也依赖在线搜索功能。",
     searchBraveKey: "Brave Search API Key",
     searchTavilyKey: "Tavily API Key",
 
@@ -213,18 +217,15 @@ const strings = {
     saveSuccess: "设置已保存",
     saveError: "保存设置失败",
     memoryTitle: "记忆文件",
-    memoryDescription: "管理 /memory 目录下的记忆文件。",
-    memoryCardLongTerm: "长期记忆 / Long-term Memory",
+    memoryDescription: "管理记忆文件。",
+    memoryCardLongTerm: "长期记忆",
+    memoryCardSoul: "灵魂",
+    memoryCardIdentity: "身份",
+    memoryCardUserInfo: "用户信息",
     memoryMissing: "长期记忆文件尚不存在。",
-    memoryCreate: "创建",
-    memorySave: "保存记忆",
+    memoryRefreshAll: "全部刷新",
     memoryRefresh: "刷新",
-    memoryAuxMissing: "该文件尚不存在。",
-    memoryCreateEmpty: "创建",
-    memoryCreateConfirm: "记忆不存在。现在创建 /memory/memory.md 吗？",
-    memoryCreated: "记忆已创建",
-    memoryEmptyCreated: "空文件已创建",
-    memorySaved: "记忆已保存",
+    memoryAuxMissing: "记忆文件尚不存在。",
     memoryRefreshed: "记忆已重新加载",
     memoryLoadError: "加载记忆失败",
     memorySaveError: "保存记忆失败",
@@ -248,8 +249,13 @@ const strings = {
     fileEmpty: "此文件夹为空。",
     fileOpen: "打开",
     fileEdit: "编辑",
+    filePreview: "预览",
     fileDownload: "下载",
     fileDelete: "删除",
+    fileDevMode: "开发者模式",
+    fileDevModeRequired: "请先启用开发者模式再修改文件。",
+    fileDevModeConfirm:
+      "进入开发者模式后，你可以上传、修改或删除文件。不正确的增删改可能导致系统无法正常运行、无限重启等问题。请注意合理修改。",
     fileDeleteConfirm: "确定删除 {path}？",
     fileUploadComplete: "上传完成",
     fileFolderCreated: "文件夹已创建",
@@ -346,6 +352,7 @@ function setLang(lang) {
   buildLocaleMenu();
   renderFileRows(lastFileEntries);
   renderMemoryState();
+  updateFileDevModeUI();
 }
 
 /* ═══════════════════════════════════════════════════
@@ -423,6 +430,12 @@ const llmProviderPresets = {
   },
 };
 
+const llmProviderDefaultModels = {
+  openai: "gpt-5.4",
+  qwen: "qwen-3.6",
+  anthropic: "claude-sonnet-4-6",
+};
+
 /* ── Banner helpers ── */
 
 function showBanner(id, message, isError = false) {
@@ -492,6 +505,10 @@ function applyProviderPreset(presetKey) {
     const input = document.getElementById(field);
     if (input) input.value = value;
   });
+  const modelInput = document.getElementById("llm_model");
+  if (modelInput && llmProviderDefaultModels[presetKey]) {
+    modelInput.value = llmProviderDefaultModels[presetKey];
+  }
   syncProviderPreset();
 }
 
@@ -604,21 +621,28 @@ function stopWechatLoginPolling() {
 }
 
 function renderWechatLoginStatus(data) {
-  const qrImage = document.getElementById("wechatLoginQr");
+  const qrCanvas = document.getElementById("wechatLoginQr");
   const qrLink = document.getElementById("wechatLoginQrLink");
   const meta = document.getElementById("wechatLoginMeta");
 
   if (data.qr_data_url) {
-    qrImage.src =
-      "https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=" +
-      encodeURIComponent(data.qr_data_url);
-    qrImage.classList.remove("hidden");
+    if (typeof window.renderWechatQr === "function") {
+      try {
+        window.renderWechatQr(qrCanvas, data.qr_data_url);
+      } catch (error) {
+        console.error("Failed to render WeChat QR:", error);
+      }
+    }
+    qrCanvas.classList.remove("hidden");
     qrLink.href = data.qr_data_url;
     qrLink.textContent = t("wechatLoginOpenLink");
     qrLink.classList.remove("hidden");
   } else {
-    qrImage.removeAttribute("src");
-    qrImage.classList.add("hidden");
+    const ctx = qrCanvas.getContext("2d");
+    if (ctx) {
+      ctx.clearRect(0, 0, qrCanvas.width, qrCanvas.height);
+    }
+    qrCanvas.classList.add("hidden");
     qrLink.removeAttribute("href");
     qrLink.textContent = "";
     qrLink.classList.add("hidden");
@@ -717,22 +741,65 @@ async function cancelWechatLogin() {
 
 let currentPath = "/";
 let lastFileEntries = [];
+let fileDevModeEnabled = false;
 const EDITABLE_FILE_EXTENSIONS = [".md", ".json", ".txt", ".jsonb", ".jsonc", ".lua"];
 const MEMORY_FILES = [
   {
     id: "memoryEditor",
-    missingId: null,
+    missingId: "memoryMissingState",
     path: "/memory/memory.md",
-    template: "# Long-term Memory\n## Summary Labels\n\n## Active Memories\n",
+    editable: false,
   },
-  { id: "soulEditor", missingId: "soulMissingState", path: "/memory/soul.md", template: "" },
-  { id: "identityEditor", missingId: "identityMissingState", path: "/memory/identity.md", template: "" },
-  { id: "userEditor", missingId: "userMissingState", path: "/memory/user.md", template: "" },
+  { id: "soulEditor", missingId: "soulMissingState", path: "/memory/soul.md", editable: true },
+  { id: "identityEditor", missingId: "identityMissingState", path: "/memory/identity.md", editable: true },
+  { id: "userEditor", missingId: "userMissingState", path: "/memory/user.md", editable: true },
 ];
 let memoryLoaded = false;
 let memoryContents = {};
 let memoryFilePresence = {};
 let activeEditorPath = "";
+let activeEditorSource = "";
+
+function isFileDevModeEnabled() {
+  return fileDevModeEnabled;
+}
+
+function applyFileEditorAccessMode() {
+  const textarea = document.getElementById("fileEditorTextarea");
+  const saveButton = document.getElementById("saveFileEditorButton");
+  if (!textarea || !saveButton) return;
+
+  const previewOnly = activeEditorSource === "files" && !isFileDevModeEnabled();
+  textarea.readOnly = previewOnly;
+  saveButton.classList.toggle("hidden", previewOnly);
+  saveButton.disabled = previewOnly;
+}
+
+function updateFileDevModeUI() {
+  const createRow = document.getElementById("fileCreateRow");
+  const uploadRow = document.getElementById("fileUploadRow");
+  const toggleButton = document.getElementById("devModeButton");
+  const enabled = isFileDevModeEnabled();
+
+  if (createRow) {
+    createRow.classList.toggle("hidden", !enabled);
+  }
+  if (uploadRow) {
+    uploadRow.classList.toggle("hidden", !enabled);
+  }
+  if (toggleButton) {
+    toggleButton.classList.toggle("active", enabled);
+    toggleButton.setAttribute("aria-pressed", enabled ? "true" : "false");
+  }
+
+  applyFileEditorAccessMode();
+  renderFileRows(lastFileEntries);
+}
+
+function setFileDevMode(enabled) {
+  fileDevModeEnabled = !!enabled;
+  updateFileDevModeUI();
+}
 
 function humanSize(value) {
   if (value < 1024) return value + " B";
@@ -824,7 +891,7 @@ function renderFileRows(entries) {
         if (isEditableFile(entry.path)) {
           const editBtn = document.createElement("button");
           editBtn.className = "link-btn";
-          editBtn.textContent = t("fileEdit");
+          editBtn.textContent = isFileDevModeEnabled() ? t("fileEdit") : t("filePreview");
           editBtn.onclick = () => {
             openFileEditor(entry.path).catch((err) =>
               showBanner("fileBanner", err.message || t("fileEditorLoadError"), true)
@@ -844,7 +911,9 @@ function renderFileRows(entries) {
       const delBtn = document.createElement("button");
       delBtn.className = "link-btn danger";
       delBtn.textContent = t("fileDelete");
+      delBtn.disabled = !isFileDevModeEnabled();
       delBtn.onclick = async () => {
+        if (!isFileDevModeEnabled()) return;
         const msg = t("fileDeleteConfirm").replace("{path}", entry.path);
         if (!window.confirm(msg)) return;
         await deletePath(entry.path);
@@ -876,6 +945,11 @@ async function loadFiles() {
 }
 
 async function uploadFile() {
+  if (!isFileDevModeEnabled()) {
+    showBanner("fileBanner", t("fileDevModeRequired"), true);
+    return;
+  }
+
   const pathInput = document.getElementById("uploadPathInput");
   const fileInput = document.getElementById("uploadFileInput");
   const button = document.getElementById("uploadButton");
@@ -910,6 +984,11 @@ async function uploadFile() {
 }
 
 async function createFolder() {
+  if (!isFileDevModeEnabled()) {
+    showBanner("fileBanner", t("fileDevModeRequired"), true);
+    return;
+  }
+
   const input = document.getElementById("newFolderInput");
   const name = input.value.trim();
   if (!name) {
@@ -934,6 +1013,11 @@ async function createFolder() {
 }
 
 async function deletePath(path) {
+  if (!isFileDevModeEnabled()) {
+    showBanner("fileBanner", t("fileDevModeRequired"), true);
+    return;
+  }
+
   try {
     const response = await fetch(
       "/api/files?path=" + encodeURIComponent(path),
@@ -959,13 +1043,27 @@ function openFileEditorModal() {
 function closeFileEditorModal() {
   document.getElementById("fileEditorModal").classList.add("hidden");
   document.body.style.overflow = "";
+  const shouldRefreshMemory = activeEditorSource === "memory";
   activeEditorPath = "";
+  activeEditorSource = "";
   hideBanner("fileEditorBanner");
+  if (shouldRefreshMemory) {
+    refreshMemory({ showSuccessBanner: false }).catch((err) =>
+      showBanner("memoryBanner", err.message || t("memoryLoadError"), true)
+    );
+  }
 }
 
-async function loadFileIntoEditor(path) {
+async function loadFileIntoEditor(path, options = {}) {
+  const { allowMissing = false } = options;
   const response = await fetch("/files" + path, { cache: "no-store" });
   if (!response.ok) {
+    if (allowMissing && response.status === 404) {
+      document.getElementById("fileEditorPath").textContent = path;
+      document.getElementById("fileEditorTextarea").value = "";
+      activeEditorPath = path;
+      return;
+    }
     throw new Error((await response.text()) || t("fileEditorLoadError"));
   }
 
@@ -977,7 +1075,17 @@ async function loadFileIntoEditor(path) {
 
 async function openFileEditor(path) {
   hideBanner("fileEditorBanner");
+  activeEditorSource = "files";
   await loadFileIntoEditor(path);
+  applyFileEditorAccessMode();
+  openFileEditorModal();
+}
+
+async function openMemoryEditor(path) {
+  hideBanner("fileEditorBanner");
+  activeEditorSource = "memory";
+  await loadFileIntoEditor(path, { allowMissing: true });
+  applyFileEditorAccessMode();
   openFileEditorModal();
 }
 
@@ -988,7 +1096,9 @@ async function refreshFileEditor() {
   button.disabled = true;
   hideBanner("fileEditorBanner");
   try {
-    await loadFileIntoEditor(activeEditorPath);
+    await loadFileIntoEditor(activeEditorPath, {
+      allowMissing: activeEditorSource === "memory",
+    });
   } catch (err) {
     showBanner("fileEditorBanner", err.message || t("fileEditorLoadError"), true);
   } finally {
@@ -1000,6 +1110,10 @@ async function saveFileEditor() {
   const button = document.getElementById("saveFileEditorButton");
   const textarea = document.getElementById("fileEditorTextarea");
   if (!activeEditorPath) return;
+  if (activeEditorSource === "files" && !isFileDevModeEnabled()) {
+    showBanner("fileEditorBanner", t("fileDevModeRequired"), true);
+    return;
+  }
 
   button.disabled = true;
   hideBanner("fileEditorBanner");
@@ -1031,32 +1145,24 @@ async function saveFileEditor() {
 function renderMemoryState() {
   MEMORY_FILES.forEach((file) => {
     const editor = document.getElementById(file.id);
-    const missingId =
-      file.missingId || (file.id === "memoryEditor" ? "memoryMissingState" : null);
-    const missing = missingId ? document.getElementById(missingId) : null;
+    const missing = file.missingId ? document.getElementById(file.missingId) : null;
     const exists = !!memoryFilePresence[file.path];
+    const editButton = document.querySelector(`.memory-edit-btn[data-path="${file.path}"]`);
 
     if (editor) {
       editor.value = memoryContents[file.path] || "";
-      editor.disabled = !exists;
+      editor.readOnly = true;
       editor.classList.toggle("hidden", !exists);
     }
     if (missing) {
       missing.classList.toggle("hidden", exists);
     }
+    if (editButton) {
+      const showEdit = !!file.editable && exists;
+      editButton.classList.toggle("hidden", !showEdit);
+      editButton.disabled = !showEdit;
+    }
   });
-}
-
-async function ensureMemoryDir() {
-  const response = await fetch("/api/files/mkdir", {
-    method: "POST",
-    cache: "no-store",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ path: "/memory" }),
-  });
-  if (!response.ok) {
-    throw new Error((await response.text()) || t("memorySaveError"));
-  }
 }
 
 async function loadMemory() {
@@ -1109,111 +1215,45 @@ async function loadMemory() {
   renderMemoryState();
 }
 
-async function uploadMemoryContent(path, content) {
-  const response = await fetch(
-    "/api/files/upload?path=" + encodeURIComponent(path),
-    {
-      method: "POST",
-      cache: "no-store",
-      body: new Blob([content], { type: "text/markdown; charset=utf-8" }),
-    }
-  );
-  if (!response.ok) {
-    throw new Error((await response.text()) || t("memorySaveError"));
-  }
-}
-
-async function createMemory() {
-  if (!window.confirm(t("memoryCreateConfirm"))) {
-    return;
-  }
-
-  const button = document.getElementById("createMemoryButton");
-  button.disabled = true;
-  hideBanner("memoryBanner");
-
-  try {
-    await ensureMemoryDir();
-    const primaryFile = MEMORY_FILES[0];
-    await uploadMemoryContent(primaryFile.path, primaryFile.template);
-    memoryContents[primaryFile.path] = primaryFile.template;
-    memoryFilePresence[primaryFile.path] = true;
-    memoryLoaded = true;
-    renderMemoryState();
-    showBanner("memoryBanner", t("memoryCreated"));
-  } catch (err) {
-    showBanner("memoryBanner", err.message || t("memorySaveError"), true);
-  } finally {
-    button.disabled = false;
-  }
-}
-
-async function saveMemory() {
-  const button = document.getElementById("saveMemoryButton");
-  button.disabled = true;
-  hideBanner("memoryBanner");
-
-  try {
-    await ensureMemoryDir();
-    for (const file of MEMORY_FILES) {
-      if (!memoryFilePresence[file.path]) {
-        continue;
-      }
-      const editor = document.getElementById(file.id);
-      const content = editor ? editor.value : "";
-      await uploadMemoryContent(file.path, content);
-      memoryContents[file.path] = content;
-    }
-    memoryLoaded = true;
-    renderMemoryState();
-    showBanner("memoryBanner", t("memorySaved"));
-  } catch (err) {
-    showBanner("memoryBanner", err.message || t("memorySaveError"), true);
-  } finally {
-    button.disabled = false;
-  }
-}
-
-async function createEmptyMemoryFile(editorId) {
-  const file = MEMORY_FILES.find((item) => item.id === editorId);
-  if (!file || !file.missingId) {
-    return;
-  }
-
-  const button = document.querySelector(`.memory-init-btn[data-editor="${editorId}"]`);
-  if (button) {
-    button.disabled = true;
-  }
-  hideBanner("memoryBanner");
-
-  try {
-    await ensureMemoryDir();
-    await uploadMemoryContent(file.path, "");
-    memoryFilePresence[file.path] = true;
-    memoryContents[file.path] = "";
-    renderMemoryState();
-    showBanner("memoryBanner", t("memoryEmptyCreated"));
-  } catch (err) {
-    showBanner("memoryBanner", err.message || t("memorySaveError"), true);
-  } finally {
-    if (button) {
-      button.disabled = false;
-    }
-  }
-}
-
-async function refreshMemory() {
+async function refreshMemory(options = {}) {
+  const { showSuccessBanner = true } = options;
   const button = document.getElementById("refreshMemoryButton");
   button.disabled = true;
   hideBanner("memoryBanner");
 
   try {
     await loadMemory();
-    showBanner("memoryBanner", t("memoryRefreshed"));
+    if (showSuccessBanner) {
+      showBanner("memoryBanner", t("memoryRefreshed"));
+    }
   } catch (err) {
     showBanner("memoryBanner", err.message || t("memoryLoadError"), true);
+    throw err;
   } finally {
     button.disabled = false;
+  }
+}
+
+async function refreshMemoryFile(path) {
+  hideBanner("memoryBanner");
+
+  const file = MEMORY_FILES.find((item) => item.path === path);
+  if (!file) return;
+
+  try {
+    const response = await fetch("/files" + file.path, { cache: "no-store" });
+    if (response.status === 404) {
+      memoryFilePresence[file.path] = false;
+      memoryContents[file.path] = "";
+    } else if (!response.ok) {
+      throw new Error((await response.text()) || t("memoryLoadError"));
+    } else {
+      memoryFilePresence[file.path] = true;
+      memoryContents[file.path] = await response.text();
+    }
+    renderMemoryState();
+  } catch (err) {
+    showBanner("memoryBanner", err.message || t("memoryLoadError"), true);
   }
 }
 
@@ -1247,16 +1287,28 @@ function bindEvents() {
   document.getElementById("refreshFilesButton").addEventListener("click", () =>
     loadFiles().catch((err) => showBanner("fileBanner", err.message, true))
   );
+  document.getElementById("devModeButton").addEventListener("click", () => {
+    const nextEnabled = !isFileDevModeEnabled();
+    if (nextEnabled && !window.confirm(t("fileDevModeConfirm"))) {
+      return;
+    }
+    setFileDevMode(nextEnabled);
+  });
   document.getElementById("upDirButton").addEventListener("click", () => {
     currentPath = parentPath(currentPath);
     loadFiles().catch((err) => showBanner("fileBanner", err.message, true));
   });
   document.getElementById("uploadButton").addEventListener("click", uploadFile);
-  document.getElementById("createMemoryButton").addEventListener("click", createMemory);
-  document.getElementById("saveMemoryButton").addEventListener("click", saveMemory);
   document.getElementById("refreshMemoryButton").addEventListener("click", refreshMemory);
-  document.querySelectorAll(".memory-init-btn").forEach((button) => {
-    button.addEventListener("click", () => createEmptyMemoryFile(button.dataset.editor));
+  document.querySelectorAll(".memory-refresh-btn").forEach((button) => {
+    button.addEventListener("click", () => refreshMemoryFile(button.dataset.path));
+  });
+  document.querySelectorAll(".memory-edit-btn").forEach((button) => {
+    button.addEventListener("click", () => {
+      openMemoryEditor(button.dataset.path).catch((err) =>
+        showBanner("memoryBanner", err.message || t("fileEditorLoadError"), true)
+      );
+    });
   });
   document
     .getElementById("closeFileEditorButton")
@@ -1296,10 +1348,12 @@ function bindEvents() {
    ═══════════════════════════════════════════════════ */
 
 async function bootstrap() {
+  fileDevModeEnabled = false;
   currentLang = detectLang();
   applyI18n();
   buildLocaleMenu();
   bindEvents();
+  updateFileDevModeUI();
 
   try {
     await loadStatus();
