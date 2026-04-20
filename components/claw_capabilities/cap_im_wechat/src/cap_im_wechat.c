@@ -17,10 +17,10 @@
 #include "cap_im_attachment.h"
 #include "cJSON.h"
 #include "claw_cap.h"
+#include "claw_task.h"
 #include "claw_event_publisher.h"
 #include "esp_crt_bundle.h"
 #include "esp_err.h"
-#include "esp_heap_caps.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
 #include "esp_random.h"
@@ -40,8 +40,6 @@ static const char *TAG = "cap_im_wechat";
 #define CAP_IM_WECHAT_MAX_MSG_LEN 4000
 #define CAP_IM_WECHAT_POLL_TIMEOUT_MS 35000
 #define CAP_IM_WECHAT_RETRY_DELAY_MS 2000
-#define CAP_IM_WECHAT_TASK_STACK 6144
-#define CAP_IM_WECHAT_TASK_PRIO 5
 #define CAP_IM_WECHAT_DEDUP_CACHE_SIZE 64
 #define CAP_IM_WECHAT_CONTEXT_CACHE_SIZE 32
 #define CAP_IM_WECHAT_PATH_BUF_SIZE 256
@@ -121,31 +119,64 @@ typedef struct {
     cap_im_wechat_qr_state_t qr;
 } cap_im_wechat_state_t;
 
-static UBaseType_t cap_im_wechat_task_memory_caps(void)
-{
-#if defined(CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM) && CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM
-    if (heap_caps_get_total_size(MALLOC_CAP_SPIRAM) > 0) {
-        return MALLOC_CAP_SPIRAM;
-    }
-#endif
-
-    return MALLOC_CAP_INTERNAL;
-}
-
-static cap_im_wechat_state_t s_wechat = {
-    .base_url = CAP_IM_WECHAT_DEFAULT_BASE_URL,
-    .cdn_base_url = CAP_IM_WECHAT_DEFAULT_CDN_BASE_URL,
-    .account_id = "default",
-    .app_id = CAP_IM_WECHAT_DEFAULT_APP_ID,
-    .client_version = CAP_IM_WECHAT_DEFAULT_CLIENT_VERSION,
-    .max_inbound_file_bytes = 2 * 1024 * 1024,
-    .poll_timeout_ms = CAP_IM_WECHAT_POLL_TIMEOUT_MS,
-};
-
 static void cap_im_wechat_qr_reset_locked(void);
 static esp_err_t cap_im_wechat_qr_fetch_code_locked(void);
 static esp_err_t cap_im_wechat_qr_poll_once_locked(void);
 static void cap_im_wechat_qr_task(void *arg);
+
+static cap_im_wechat_state_t *s_wechat_state = NULL;
+#define s_wechat (*s_wechat_state)
+
+static void cap_im_wechat_init_defaults(cap_im_wechat_state_t *state)
+{
+    if (!state) {
+        return;
+    }
+
+    strlcpy(state->base_url, CAP_IM_WECHAT_DEFAULT_BASE_URL, sizeof(state->base_url));
+    strlcpy(state->cdn_base_url,
+            CAP_IM_WECHAT_DEFAULT_CDN_BASE_URL,
+            sizeof(state->cdn_base_url));
+    strlcpy(state->account_id, "default", sizeof(state->account_id));
+    strlcpy(state->app_id, CAP_IM_WECHAT_DEFAULT_APP_ID, sizeof(state->app_id));
+    strlcpy(state->client_version,
+            CAP_IM_WECHAT_DEFAULT_CLIENT_VERSION,
+            sizeof(state->client_version));
+    state->max_inbound_file_bytes = 2 * 1024 * 1024;
+    state->poll_timeout_ms = CAP_IM_WECHAT_POLL_TIMEOUT_MS;
+}
+
+static esp_err_t cap_im_wechat_ensure_state(void)
+{
+    if (s_wechat_state) {
+        return ESP_OK;
+    }
+
+    s_wechat_state = calloc(1, sizeof(*s_wechat_state));
+    if (!s_wechat_state) {
+        return ESP_ERR_NO_MEM;
+    }
+
+    cap_im_wechat_init_defaults(s_wechat_state);
+    return ESP_OK;
+}
+
+static void cap_im_wechat_free_state(void)
+{
+    if (!s_wechat_state) {
+        return;
+    }
+
+    free(s_wechat.sync_buf);
+    s_wechat.sync_buf = NULL;
+    if (s_wechat.lock) {
+        vSemaphoreDelete(s_wechat.lock);
+        s_wechat.lock = NULL;
+    }
+
+    free(s_wechat_state);
+    s_wechat_state = NULL;
+}
 
 static int64_t cap_im_wechat_now_ms(void)
 {
@@ -154,6 +185,12 @@ static int64_t cap_im_wechat_now_ms(void)
 
 static esp_err_t cap_im_wechat_lock(void)
 {
+    esp_err_t err = cap_im_wechat_ensure_state();
+
+    if (err != ESP_OK) {
+        return err;
+    }
+
     if (!s_wechat.lock) {
         s_wechat.lock = xSemaphoreCreateMutex();
         if (!s_wechat.lock) {
@@ -1483,7 +1520,7 @@ static void cap_im_wechat_poll_task(void *arg)
     }
 
     s_wechat.poll_task = NULL;
-    vTaskDeleteWithCaps(NULL);
+    claw_task_delete(NULL);
 }
 
 static esp_err_t cap_im_wechat_send_message_json(cJSON *msg_root)
@@ -1987,6 +2024,8 @@ static esp_err_t cap_im_wechat_send_image_execute(const char *input_json,
 
 static esp_err_t cap_im_wechat_gateway_init(void)
 {
+    ESP_RETURN_ON_ERROR(cap_im_wechat_ensure_state(), TAG, "alloc state failed");
+
     if (cap_im_wechat_lock() == ESP_OK) {
         if (!s_wechat.qr.status[0]) {
             cap_im_wechat_qr_reset_locked();
@@ -2000,19 +2039,23 @@ static esp_err_t cap_im_wechat_gateway_start(void)
 {
     BaseType_t ok;
 
+    ESP_RETURN_ON_ERROR(cap_im_wechat_ensure_state(), TAG, "alloc state failed");
+
     if (s_wechat.poll_task) {
         return ESP_OK;
     }
 
     s_wechat.stop_requested = false;
-    ok = xTaskCreatePinnedToCoreWithCaps(cap_im_wechat_poll_task,
-                                         "wechat_poll",
-                                         CAP_IM_WECHAT_TASK_STACK,
-                                         NULL,
-                                         CAP_IM_WECHAT_TASK_PRIO,
-                                         &s_wechat.poll_task,
-                                         tskNO_AFFINITY,
-                                         cap_im_wechat_task_memory_caps());
+    ok = claw_task_create(&(claw_task_config_t){
+                              .name = "wechat_poll",
+                              .stack_size = 6144,
+                              .priority = 5,
+                              .core_id = tskNO_AFFINITY,
+                              .stack_policy = CLAW_TASK_STACK_PREFER_PSRAM,
+                          },
+                          cap_im_wechat_poll_task,
+                          NULL,
+                          &s_wechat.poll_task);
     if (ok != pdPASS) {
         s_wechat.poll_task = NULL;
         return ESP_FAIL;
@@ -2025,12 +2068,26 @@ static esp_err_t cap_im_wechat_gateway_stop(void)
 {
     TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(5000);
 
+    if (!s_wechat_state) {
+        return ESP_OK;
+    }
+
     s_wechat.stop_requested = true;
+    s_wechat.qr.stop_requested = true;
+    s_wechat.qr.active = false;
     while (s_wechat.poll_task && xTaskGetTickCount() < deadline) {
         vTaskDelay(pdMS_TO_TICKS(50));
     }
+    while (s_wechat.qr_task && xTaskGetTickCount() < deadline) {
+        vTaskDelay(pdMS_TO_TICKS(50));
+    }
 
-    return s_wechat.poll_task ? ESP_ERR_TIMEOUT : ESP_OK;
+    if (s_wechat.poll_task || s_wechat.qr_task) {
+        return ESP_ERR_TIMEOUT;
+    }
+
+    cap_im_wechat_free_state();
+    return ESP_OK;
 }
 
 static const claw_cap_descriptor_t s_wechat_descriptors[] = {
@@ -2092,6 +2149,8 @@ esp_err_t cap_im_wechat_set_client_config(const cap_im_wechat_client_config_t *c
         return ESP_ERR_INVALID_ARG;
     }
 
+    ESP_RETURN_ON_ERROR(cap_im_wechat_ensure_state(), TAG, "alloc state failed");
+
     strlcpy(s_wechat.token, config->token, sizeof(s_wechat.token));
     strlcpy(s_wechat.base_url,
             config->base_url[0] ? config->base_url : CAP_IM_WECHAT_DEFAULT_BASE_URL,
@@ -2124,6 +2183,8 @@ esp_err_t cap_im_wechat_set_attachment_config(
     if (!config || !config->storage_root_dir) {
         return ESP_ERR_INVALID_ARG;
     }
+
+    ESP_RETURN_ON_ERROR(cap_im_wechat_ensure_state(), TAG, "alloc state failed");
 
     strlcpy(s_wechat.attachment_root_dir,
             config->storage_root_dir,
@@ -2178,14 +2239,16 @@ esp_err_t cap_im_wechat_qr_login_start(const char *account_id, bool force)
     }
 
     if (!s_wechat.qr_task) {
-        ok = xTaskCreatePinnedToCoreWithCaps(cap_im_wechat_qr_task,
-                                             "wechat_qr",
-                                             CAP_IM_WECHAT_TASK_STACK,
-                                             NULL,
-                                             CAP_IM_WECHAT_TASK_PRIO,
-                                             &s_wechat.qr_task,
-                                             tskNO_AFFINITY,
-                                             cap_im_wechat_task_memory_caps());
+        ok = claw_task_create(&(claw_task_config_t){
+                                  .name = "wechat_qr",
+                                  .stack_size = 6144,
+                                  .priority = 5,
+                                  .core_id = tskNO_AFFINITY,
+                                  .stack_policy = CLAW_TASK_STACK_PREFER_PSRAM,
+                              },
+                              cap_im_wechat_qr_task,
+                              NULL,
+                              &s_wechat.qr_task);
         if (ok != pdPASS) {
             s_wechat.qr.active = false;
             s_wechat.qr_task = NULL;
@@ -2205,6 +2268,8 @@ esp_err_t cap_im_wechat_qr_login_get_status(cap_im_wechat_qr_login_status_t *out
     if (!out_status) {
         return ESP_ERR_INVALID_ARG;
     }
+
+    ESP_RETURN_ON_ERROR(cap_im_wechat_ensure_state(), TAG, "alloc state failed");
 
     err = cap_im_wechat_lock();
     if (err != ESP_OK) {
@@ -2269,6 +2334,8 @@ esp_err_t cap_im_wechat_send_text(const char *chat_id, const char *text)
     size_t offset = 0;
     esp_err_t last_err = ESP_OK;
 
+    ESP_RETURN_ON_ERROR(cap_im_wechat_ensure_state(), TAG, "alloc state failed");
+
     if (!chat_id || !chat_id[0] || !text || !text[0] || !s_wechat.configured) {
         return ESP_ERR_INVALID_ARG;
     }
@@ -2307,6 +2374,8 @@ esp_err_t cap_im_wechat_send_image(const char *chat_id, const char *path, const 
     size_t ciphertext_size = 0;
     size_t plaintext_size = 0;
     esp_err_t err;
+
+    ESP_RETURN_ON_ERROR(cap_im_wechat_ensure_state(), TAG, "alloc state failed");
 
     if (!chat_id || !chat_id[0] || !path || !path[0] || !s_wechat.configured) {
         return ESP_ERR_INVALID_ARG;
@@ -2599,5 +2668,5 @@ static void cap_im_wechat_qr_task(void *arg)
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
 
-    vTaskDeleteWithCaps(NULL);
+    claw_task_delete(NULL);
 }
