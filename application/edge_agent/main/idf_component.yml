@@ -37,6 +37,9 @@ dependencies:
     rules:
       - if: $CONFIG{ESP_BOARD_DEV_DISPLAY_LCD_SUPPORT} == True
 
+  http_reuse:
+    path: ../../../components/common/http_reuse
+
   http_server:
     path: ../components/http_server
 
