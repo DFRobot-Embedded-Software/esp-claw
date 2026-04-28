@@ -438,6 +438,7 @@ static esp_err_t build_response_payload_json(const claw_core_request_t *request,
 }
 
 static esp_err_t build_out_message_event_common(const char *event_id_prefix,
+                                                const char *event_type,
                                                 uint32_t request_id,
                                                 int64_t now_ms,
                                                 const char *channel,
@@ -445,8 +446,9 @@ static esp_err_t build_out_message_event_common(const char *event_id_prefix,
                                                 const char *text,
                                                 claw_event_t *out_event)
 {
-    if (!event_id_prefix || !event_id_prefix[0] || !channel || !channel[0] ||
-            !chat_id || !chat_id[0] || !text || !text[0] || !out_event) {
+    if (!event_id_prefix || !event_id_prefix[0] || !event_type || !event_type[0] ||
+            !channel || !channel[0] || !chat_id || !chat_id[0] ||
+            !text || !text[0] || !out_event) {
         return ESP_ERR_INVALID_ARG;
     }
 
@@ -454,7 +456,7 @@ static esp_err_t build_out_message_event_common(const char *event_id_prefix,
     snprintf(out_event->event_id, sizeof(out_event->event_id),
              "%s-%" PRIu32 "-%" PRId64, event_id_prefix, request_id, now_ms);
     strlcpy(out_event->source_cap, "claw_core", sizeof(out_event->source_cap));
-    strlcpy(out_event->event_type, "out_message", sizeof(out_event->event_type));
+    strlcpy(out_event->event_type, event_type, sizeof(out_event->event_type));
     strlcpy(out_event->source_channel, channel, sizeof(out_event->source_channel));
     strlcpy(out_event->chat_id, chat_id, sizeof(out_event->chat_id));
     strlcpy(out_event->content_type, "text", sizeof(out_event->content_type));
@@ -499,6 +501,7 @@ static esp_err_t build_agent_out_message_event(const claw_core_request_t *reques
               response->target_chat_id : request->source_chat_id;
 
     err = build_out_message_event_common("agent",
+                                         "out_message",
                                          request->request_id,
                                          now_ms,
                                          channel,
@@ -570,6 +573,7 @@ static void publish_stage_event(const claw_core_request_t *request, const char *
     now_ms = claw_core_now_ms();
     err = build_out_message_event_common(
         "stage",
+        "agent_stage",
         request->request_id,
         now_ms,
         (request->target_channel && request->target_channel[0]) ?
