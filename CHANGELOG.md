@@ -52,6 +52,12 @@
 
 * Fixed LilyGO T-Display-S3 LCD startup behavior.
 
+## 2026-04-28
+
+### Fix:
+
+* Reduced `httpd` task stack pressure in Edge Agent by moving large configuration and WeChat login status structures from stack allocation to heap-backed buffers across the config and WeChat HTTP handlers.
+
 ## 2026-04-21
 
 ### Refactor:

@@ -104,6 +104,7 @@
       {
         "type": "send_message",
         "input": {
+          "event_type": "{{event.event_type}}",
           "channel": "{{event.source_channel}}",
           "chat_id": "{{event.chat_id}}",
           "message": "{{event.text}}"
