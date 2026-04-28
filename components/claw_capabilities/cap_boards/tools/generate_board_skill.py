@@ -428,6 +428,17 @@ def render_markdown(board_info: dict[str, Any], board_version: str, devices: lis
     manufacturer = str(board_info.get('manufacturer', 'unknown'))
     description = str(board_info.get('description', ''))
     lines = [
+        '---',
+        '{',
+        '  "name": "board_hardware_info",',
+        '  "description": "Use this skill before operating hardware or writing Lua and board-specific code that depends on device inventory and occupied GPIOs. **You cannot speculate or fabricate hardware information.**",',
+        '  "metadata": {',
+        '    "cap_groups": ["cap_boards"],',
+        '    "manage_mode": "readonly"',
+        '  }',
+        '}',
+        '---',
+        '',
         f'# Current Board Hardware: {board_name}',
         '',
         'Read this skill before operating hardware, assigning GPIOs, or writing Lua and board-specific code.',
@@ -450,6 +461,8 @@ def render_markdown(board_info: dict[str, Any], board_version: str, devices: lis
     lines.extend([
         '',
         '## Device Inventory',
+        '',
+        'The following devices are known to be present on this board:',
     ])
 
     for device in devices:
