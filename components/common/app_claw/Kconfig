@@ -72,6 +72,13 @@ menu "App Claw Config"
                 Enable the WeChat capability and keep app_claw's direct dependency
                 on cap_im_wechat.
 
+        config APP_CLAW_CAP_IM_LOCAL
+            bool "Enable local / Web IM capability (cap_im_local)"
+            depends on APP_CLAW_CAP_SESSION_MGR
+            default y
+            help
+                Register cap_im_local for in-process IM (e.g. edge_agent Web IM). Requires session manager for roll_chat_session.
+
         config APP_CLAW_CAP_SCHEDULER
             bool "Enable scheduler capability"
             default y
@@ -152,6 +159,34 @@ menu "App Claw Config"
     endmenu
 
     menu "App Claw Lua Modules"
+
+        config APP_CLAW_LUA_MODULE_IMU
+            bool "Enable IMU Lua module"
+            default n
+            help
+                Enable the IMU Lua module and keep app_claw's direct dependency
+                on lua_module_imu when Lua capability is enabled.
+
+        config APP_CLAW_LUA_MODULE_BQ27220
+            bool "Enable BQ27220 Lua module"
+            default n
+            help
+                Enable the BQ27220 Lua module and keep app_claw's direct dependency
+                on lua_module_bq27220 when Lua capability is enabled.
+
+        config APP_CLAW_LUA_MODULE_TOUCH
+            bool "Enable touch Lua module"
+            default y
+            help
+                Enable the touch Lua module and keep app_claw's direct dependency
+                on lua_module_touch when Lua capability is enabled.
+
+        config APP_CLAW_LUA_MODULE_IR
+            bool "Enable IR Lua module"
+            default n
+            help
+                Enable the IR Lua module and keep app_claw's direct dependency
+                on lua_module_ir when Lua capability is enabled.
 
         config APP_CLAW_LUA_MODULE_ADC
             bool "Enable ADC Lua module"

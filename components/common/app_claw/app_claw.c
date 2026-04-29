@@ -122,7 +122,7 @@ static esp_err_t init_skills(const app_claw_storage_paths_t *paths)
     ESP_RETURN_ON_ERROR(claw_skill_init(&(claw_skill_config_t) {
                             .skills_root_dir = paths->skills_root_dir,
                             .session_state_root_dir = paths->memory_session_root,
-                            .max_file_bytes = 10 * 1024,
+                            .max_file_bytes = 20 * 1024,
                         }),
                         TAG, "Failed to init claw_skill");
     return ESP_OK;
@@ -160,37 +160,6 @@ static bool app_llm_is_configured(const app_claw_config_t *config)
            config->llm_model[0] &&
            config->llm_profile[0];
 }
-
-#if CONFIG_APP_CLAW_CAP_LUA
-static esp_err_t cap_lua_run_deactivate_guard(const char *session_id,
-                                              const char *skill_id,
-                                              char *reason_out,
-                                              size_t reason_size)
-{
-    (void)session_id;
-    (void)skill_id;
-
-    size_t active = cap_lua_get_active_async_job_count();
-    if (active == 0) {
-        return ESP_OK;
-    }
-    if (reason_out && reason_size > 0) {
-        if (active == SIZE_MAX) {
-            snprintf(reason_out, reason_size,
-                     "Lua async runner is busy (lock contended). "
-                     "Call lua_list_async_jobs to confirm, then "
-                     "lua_stop_all_async_jobs before retrying deactivate_skill.");
-        } else {
-            snprintf(reason_out, reason_size,
-                     "%u Lua async job(s) still running. "
-                     "Call lua_stop_all_async_jobs (or lua_stop_async_job per id/name) "
-                     "first, then retry deactivate_skill.",
-                     (unsigned)active);
-        }
-    }
-    return ESP_ERR_INVALID_STATE;
-}
-#endif
 
 #if CONFIG_APP_CLAW_CAP_SCHEDULER && CONFIG_APP_CLAW_CAP_TIME
 static void app_time_sync_success(bool had_valid_time, void *ctx)
@@ -275,6 +244,10 @@ esp_err_t app_claw_start(const app_claw_config_t *config,
     ESP_RETURN_ON_ERROR(claw_event_router_register_outbound_binding("wechat", "wechat_send_message"),
                         TAG, "Failed to bind WeChat outbound");
 #endif
+#if CONFIG_APP_CLAW_CAP_IM_LOCAL
+    ESP_RETURN_ON_ERROR(claw_event_router_register_outbound_binding("web", "local_send_message"),
+                        TAG, "Failed to bind Web / local IM outbound");
+#endif
 
     core_config.api_key = config->llm_api_key;
     core_config.backend_type = config->llm_backend_type;
@@ -349,15 +322,6 @@ esp_err_t app_claw_start(const app_claw_config_t *config,
     ESP_RETURN_ON_ERROR(claw_event_router_start(), TAG, "Failed to start event router");
 #if CONFIG_APP_CLAW_CAP_SCHEDULER
     ESP_RETURN_ON_ERROR(cap_scheduler_start(), TAG, "Failed to start scheduler");
-#endif
-
-#if CONFIG_APP_CLAW_CAP_LUA
-    esp_err_t guard_err = claw_skill_register_deactivate_guard("cap_lua_run",
-                                                               cap_lua_run_deactivate_guard);
-    if (guard_err != ESP_OK) {
-        ESP_LOGW(TAG, "Failed to register cap_lua_run deactivate guard: %s",
-                 esp_err_to_name(guard_err));
-    }
 #endif
 
 #if CONFIG_APP_CLAW_CAP_TIME

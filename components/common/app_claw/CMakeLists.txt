@@ -42,6 +42,10 @@ if(CONFIG_APP_CLAW_CAP_IM_WECHAT)
     list(APPEND app_claw_requires cap_im_wechat)
 endif()
 
+if(CONFIG_APP_CLAW_CAP_IM_LOCAL)
+    list(APPEND app_claw_requires cap_im_local)
+endif()
+
 if(CONFIG_APP_CLAW_CAP_LLM_INSPECT)
     list(APPEND app_claw_requires cap_llm_inspect)
 endif()
@@ -88,6 +92,22 @@ endif()
 
 if(CONFIG_APP_CLAW_CAP_LUA AND CONFIG_APP_CLAW_LUA_MODULE_BOARD_MANAGER)
     list(APPEND app_claw_requires lua_module_board_manager)
+endif()
+
+if(CONFIG_APP_CLAW_CAP_LUA AND CONFIG_APP_CLAW_LUA_MODULE_IMU)
+    list(APPEND app_claw_requires lua_module_imu)
+endif()
+
+if(CONFIG_APP_CLAW_CAP_LUA AND CONFIG_APP_CLAW_LUA_MODULE_BQ27220)
+    list(APPEND app_claw_requires lua_module_bq27220)
+endif()
+
+if(CONFIG_APP_CLAW_CAP_LUA AND CONFIG_APP_CLAW_LUA_MODULE_TOUCH)
+    list(APPEND app_claw_requires lua_module_touch)
+endif()
+
+if(CONFIG_APP_CLAW_CAP_LUA AND CONFIG_APP_CLAW_LUA_MODULE_IR)
+    list(APPEND app_claw_requires lua_module_ir)
 endif()
 
 if(CONFIG_APP_CLAW_CAP_LUA AND CONFIG_APP_CLAW_LUA_MODULE_CAPABILITY)
