@@ -1192,6 +1192,7 @@ static esp_err_t cap_im_feishu_extract_attachment_fields(const char *message_typ
 
     if (strcmp(message_type, "image") == 0) {
         resource_json = cJSON_GetObjectItem(root, "image_key");
+        name_json = cJSON_GetObjectItem(root, "file_name");
     } else if (strcmp(message_type, "file") == 0) {
         resource_json = cJSON_GetObjectItem(root, "file_key");
         name_json = cJSON_GetObjectItem(root, "file_name");
@@ -1463,7 +1464,7 @@ static esp_err_t cap_im_feishu_save_attachment(const char *chat_id,
         return err;
     }
 
-    if (strcmp(attachment_kind, "file") == 0 && original_filename && original_filename[0]) {
+    if (original_filename && original_filename[0]) {
         const char *original_basename = cap_im_feishu_basename(original_filename);
         uint64_t message_hash = cap_im_feishu_fnv1a64(message_id);
         int written;
@@ -1622,6 +1623,67 @@ static void cap_im_feishu_queue_attachment(const char *chat_id,
     }
 }
 
+static char *cap_im_feishu_build_attachment_content_json(const char *attachment_kind,
+                                                         const char *resource_key,
+                                                         const char *original_filename)
+{
+    cJSON *root = NULL;
+    char *json = NULL;
+
+    if (!attachment_kind || !resource_key || !resource_key[0]) {
+        return NULL;
+    }
+
+    root = cJSON_CreateObject();
+    if (!root) {
+        return NULL;
+    }
+
+    if (strcmp(attachment_kind, "image") == 0) {
+        cJSON_AddStringToObject(root, "image_key", resource_key);
+        if (original_filename && original_filename[0]) {
+            cJSON_AddStringToObject(root, "file_name", original_filename);
+        }
+    } else {
+        cJSON_AddStringToObject(root, "file_key", resource_key);
+        if (original_filename && original_filename[0]) {
+            cJSON_AddStringToObject(root, "file_name", original_filename);
+        }
+    }
+
+    json = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+    return json;
+}
+
+static void cap_im_feishu_queue_post_attachment(const char *chat_id,
+                                                const char *sender_id,
+                                                const char *message_id,
+                                                const char *attachment_kind,
+                                                const char *resource_key,
+                                                const char *original_filename)
+{
+    char *content_json = NULL;
+
+    if (!resource_key || !resource_key[0]) {
+        return;
+    }
+
+    content_json = cap_im_feishu_build_attachment_content_json(attachment_kind,
+                                                               resource_key,
+                                                               original_filename);
+    if (!content_json) {
+        ESP_LOGW(TAG, "Feishu post attachment json build failed message=%s", message_id);
+        return;
+    }
+    cap_im_feishu_queue_attachment(chat_id,
+                                   sender_id,
+                                   message_id,
+                                   attachment_kind,
+                                   content_json);
+    free(content_json);
+}
+
 static char *cap_im_feishu_extract_text(const char *content_json)
 {
     cJSON *root = NULL;
@@ -1750,7 +1812,11 @@ static esp_err_t cap_im_feishu_post_append_styled_text(cap_im_feishu_resp_t *mar
     return ESP_OK;
 }
 
-static esp_err_t cap_im_feishu_post_append_element(cap_im_feishu_resp_t *markdown, cJSON *element)
+static esp_err_t cap_im_feishu_post_append_element(cap_im_feishu_resp_t *markdown,
+                                                   cJSON *element,
+                                                   const char *chat_id,
+                                                   const char *sender_id,
+                                                   const char *message_id)
 {
     cJSON *tag_json = NULL;
     cJSON *text_json = NULL;
@@ -1824,11 +1890,17 @@ static esp_err_t cap_im_feishu_post_append_element(cap_im_feishu_resp_t *markdow
     }
 
     if (strcmp(tag, "img") == 0) {
+        char image_filename[CAP_IM_FEISHU_NAME_LEN];
         image_key_json = cJSON_GetObjectItem(element, "image_key");
         key = cJSON_IsString(image_key_json) ? image_key_json->valuestring : NULL;
         if (!key || !key[0]) {
             return ESP_OK;
         }
+        snprintf(image_filename,
+                 sizeof(image_filename),
+                 "image_%08" PRIx32 ".jpg",
+                 (uint32_t)cap_im_feishu_fnv1a64(key));
+        cap_im_feishu_queue_post_attachment(chat_id, sender_id, message_id, "image", key, image_filename);
         if ((err = cap_im_feishu_resp_append(markdown,
                                              "![image](feishu:image:",
                                              sizeof("![image](feishu:image:") - 1)) != ESP_OK ||
@@ -1848,6 +1920,7 @@ static esp_err_t cap_im_feishu_post_append_element(cap_im_feishu_resp_t *markdow
         if (!key || !key[0]) {
             return cap_im_feishu_resp_append(markdown, text, strlen(text));
         }
+        cap_im_feishu_queue_post_attachment(chat_id, sender_id, message_id, "file", key, text);
         if ((err = cap_im_feishu_resp_append(markdown, "[", 1)) != ESP_OK ||
                 (err = cap_im_feishu_resp_append(markdown, text, strlen(text))) != ESP_OK ||
                 (err = cap_im_feishu_resp_append(markdown,
@@ -1886,7 +1959,10 @@ static esp_err_t cap_im_feishu_post_append_element(cap_im_feishu_resp_t *markdow
     return cap_im_feishu_resp_append(markdown, text, strlen(text));
 }
 
-static char *cap_im_feishu_extract_post_markdown(const char *content_json)
+static char *cap_im_feishu_extract_post_markdown(const char *content_json,
+                                                 const char *chat_id,
+                                                 const char *sender_id,
+                                                 const char *message_id)
 {
     cJSON *root = NULL;
     cJSON *body = NULL;
@@ -1942,7 +2018,7 @@ static char *cap_im_feishu_extract_post_markdown(const char *content_json)
         }
 
         cJSON_ArrayForEach(element, paragraph) {
-            err = cap_im_feishu_post_append_element(&markdown, element);
+            err = cap_im_feishu_post_append_element(&markdown, element, chat_id, sender_id, message_id);
             if (err != ESP_OK) {
                 cap_im_feishu_resp_free(&markdown);
                 cJSON_Delete(root);
@@ -2071,7 +2147,10 @@ static void cap_im_feishu_handle_message_event(cJSON *event)
     }
 
     if (strcmp(message_type, "post") == 0) {
-        char *markdown = cap_im_feishu_extract_post_markdown(content_json->valuestring);
+        char *markdown = cap_im_feishu_extract_post_markdown(content_json->valuestring,
+                                                             route_id,
+                                                             sender_id,
+                                                             message_id);
         char *clean = NULL;
         esp_err_t err;
 

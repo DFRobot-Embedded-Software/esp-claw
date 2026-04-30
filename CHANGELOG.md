@@ -26,8 +26,6 @@
 
 * Added Feishu rich text `post` embedded attachment handling so inline images and media/file elements are queued through the existing attachment save flow.
 
-* Preserved Feishu inbound file names in saved attachment paths while keeping the message hash prefix for uniqueness.
-
 ### Change:
 
 * Removed the deprecated `application/basic_demo` app and its CI/build rules.
