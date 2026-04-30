@@ -26,6 +26,8 @@
 
 * Added Feishu rich text `post` embedded attachment handling so inline images and media/file elements are queued through the existing attachment save flow.
 
+* Added Feishu inbound rich text `post` message flattening to Markdown text, including styled text, links, mentions, code blocks, horizontal rules, and image/file placeholders.
+
 ### Change:
 
 * Removed the deprecated `application/basic_demo` app and its CI/build rules.

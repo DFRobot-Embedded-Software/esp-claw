@@ -1617,6 +1617,337 @@ static char *cap_im_feishu_extract_text(const char *content_json)
     return copy;
 }
 
+static bool cap_im_feishu_post_has_style(cJSON *style, const char *name)
+{
+    cJSON *item = NULL;
+
+    if (!cJSON_IsArray(style) || !name) {
+        return false;
+    }
+
+    cJSON_ArrayForEach(item, style) {
+        if (cJSON_IsString(item) && item->valuestring && strcmp(item->valuestring, name) == 0) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static cJSON *cap_im_feishu_post_select_body(cJSON *root)
+{
+    static const char *locale_keys[] = {"zh_cn", "en_us", "ja_jp"};
+    size_t i = 0;
+    cJSON *body = NULL;
+    cJSON *content = NULL;
+
+    if (!cJSON_IsObject(root)) {
+        return NULL;
+    }
+
+    content = cJSON_GetObjectItem(root, "content");
+    if (cJSON_IsArray(content)) {
+        return root;
+    }
+
+    for (i = 0; i < sizeof(locale_keys) / sizeof(locale_keys[0]); i++) {
+        body = cJSON_GetObjectItem(root, locale_keys[i]);
+        content = cJSON_IsObject(body) ? cJSON_GetObjectItem(body, "content") : NULL;
+        if (cJSON_IsArray(content)) {
+            return body;
+        }
+    }
+
+    cJSON_ArrayForEach(body, root) {
+        content = cJSON_IsObject(body) ? cJSON_GetObjectItem(body, "content") : NULL;
+        if (cJSON_IsArray(content)) {
+            return body;
+        }
+    }
+
+    return NULL;
+}
+
+static esp_err_t cap_im_feishu_post_append_styled_text(cap_im_feishu_resp_t *markdown,
+                                                       const char *text,
+                                                       cJSON *style)
+{
+    bool bold = cap_im_feishu_post_has_style(style, "bold");
+    bool italic = cap_im_feishu_post_has_style(style, "italic");
+    bool underline = cap_im_feishu_post_has_style(style, "underline");
+    bool line_through = cap_im_feishu_post_has_style(style, "lineThrough");
+    bool code_inline = cap_im_feishu_post_has_style(style, "codeInline");
+    esp_err_t err;
+
+    if (!text) {
+        return ESP_OK;
+    }
+
+    if (bold && (err = cap_im_feishu_resp_append(markdown, "**", 2)) != ESP_OK) {
+        return err;
+    }
+    if (italic && (err = cap_im_feishu_resp_append(markdown, "*", 1)) != ESP_OK) {
+        return err;
+    }
+    if (underline && (err = cap_im_feishu_resp_append(markdown, "<u>", 3)) != ESP_OK) {
+        return err;
+    }
+    if (line_through && (err = cap_im_feishu_resp_append(markdown, "~~", 2)) != ESP_OK) {
+        return err;
+    }
+    if (code_inline && (err = cap_im_feishu_resp_append(markdown, "`", 1)) != ESP_OK) {
+        return err;
+    }
+
+    err = cap_im_feishu_resp_append(markdown, text, strlen(text));
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    if (code_inline && (err = cap_im_feishu_resp_append(markdown, "`", 1)) != ESP_OK) {
+        return err;
+    }
+    if (line_through && (err = cap_im_feishu_resp_append(markdown, "~~", 2)) != ESP_OK) {
+        return err;
+    }
+    if (underline && (err = cap_im_feishu_resp_append(markdown, "</u>", 4)) != ESP_OK) {
+        return err;
+    }
+    if (italic && (err = cap_im_feishu_resp_append(markdown, "*", 1)) != ESP_OK) {
+        return err;
+    }
+    if (bold && (err = cap_im_feishu_resp_append(markdown, "**", 2)) != ESP_OK) {
+        return err;
+    }
+
+    return ESP_OK;
+}
+
+static esp_err_t cap_im_feishu_post_append_element(cap_im_feishu_resp_t *markdown, cJSON *element)
+{
+    cJSON *tag_json = NULL;
+    cJSON *text_json = NULL;
+    cJSON *href_json = NULL;
+    cJSON *style_json = NULL;
+    cJSON *language_json = NULL;
+    cJSON *image_key_json = NULL;
+    cJSON *file_key_json = NULL;
+    cJSON *name_json = NULL;
+    cJSON *user_id_json = NULL;
+    const char *tag = NULL;
+    const char *text = NULL;
+    const char *href = NULL;
+    const char *key = NULL;
+    esp_err_t err;
+
+    if (!cJSON_IsObject(element)) {
+        return ESP_OK;
+    }
+
+    tag_json = cJSON_GetObjectItem(element, "tag");
+    tag = cJSON_IsString(tag_json) ? tag_json->valuestring : NULL;
+    if (!tag) {
+        return ESP_OK;
+    }
+
+    text_json = cJSON_GetObjectItem(element, "text");
+    text = cJSON_IsString(text_json) && text_json->valuestring ? text_json->valuestring : "";
+    style_json = cJSON_GetObjectItem(element, "style");
+
+    if (strcmp(tag, "text") == 0) {
+        return cap_im_feishu_post_append_styled_text(markdown, text, style_json);
+    }
+
+    if (strcmp(tag, "a") == 0) {
+        href_json = cJSON_GetObjectItem(element, "href");
+        href = cJSON_IsString(href_json) ? href_json->valuestring : NULL;
+        if (!href || !href[0]) {
+            return cap_im_feishu_post_append_styled_text(markdown, text, style_json);
+        }
+        if ((err = cap_im_feishu_resp_append(markdown, "[", 1)) != ESP_OK ||
+                (err = cap_im_feishu_post_append_styled_text(markdown, text, style_json)) != ESP_OK ||
+                (err = cap_im_feishu_resp_append(markdown, "](", 2)) != ESP_OK ||
+                (err = cap_im_feishu_resp_append(markdown, href, strlen(href))) != ESP_OK ||
+                (err = cap_im_feishu_resp_append(markdown, ")", 1)) != ESP_OK) {
+            return err;
+        }
+        return ESP_OK;
+    }
+
+    if (strcmp(tag, "at") == 0) {
+        user_id_json = cJSON_GetObjectItem(element, "user_id");
+        name_json = cJSON_GetObjectItem(element, "user_name");
+        if (cJSON_IsString(user_id_json) && user_id_json->valuestring &&
+                strcmp(user_id_json->valuestring, "all") == 0) {
+            return cap_im_feishu_resp_append(markdown, "@all", 4);
+        }
+        if (cJSON_IsString(name_json) && name_json->valuestring && name_json->valuestring[0]) {
+            if ((err = cap_im_feishu_resp_append(markdown, "@", 1)) != ESP_OK) {
+                return err;
+            }
+            return cap_im_feishu_resp_append(markdown, name_json->valuestring, strlen(name_json->valuestring));
+        }
+        if (cJSON_IsString(user_id_json) && user_id_json->valuestring && user_id_json->valuestring[0]) {
+            if ((err = cap_im_feishu_resp_append(markdown, "@", 1)) != ESP_OK) {
+                return err;
+            }
+            return cap_im_feishu_resp_append(markdown, user_id_json->valuestring, strlen(user_id_json->valuestring));
+        }
+        return cap_im_feishu_resp_append(markdown, "@unknown", 8);
+    }
+
+    if (strcmp(tag, "img") == 0) {
+        image_key_json = cJSON_GetObjectItem(element, "image_key");
+        key = cJSON_IsString(image_key_json) ? image_key_json->valuestring : NULL;
+        if (!key || !key[0]) {
+            return ESP_OK;
+        }
+        if ((err = cap_im_feishu_resp_append(markdown,
+                                             "![image](feishu:image:",
+                                             sizeof("![image](feishu:image:") - 1)) != ESP_OK ||
+                (err = cap_im_feishu_resp_append(markdown, key, strlen(key))) != ESP_OK ||
+                (err = cap_im_feishu_resp_append(markdown, ")", 1)) != ESP_OK) {
+            return err;
+        }
+        return ESP_OK;
+    }
+
+    if (strcmp(tag, "media") == 0 || strcmp(tag, "file") == 0) {
+        file_key_json = cJSON_GetObjectItem(element, "file_key");
+        key = cJSON_IsString(file_key_json) ? file_key_json->valuestring : NULL;
+        name_json = cJSON_GetObjectItem(element, "file_name");
+        text = cJSON_IsString(name_json) && name_json->valuestring && name_json->valuestring[0] ?
+               name_json->valuestring : "file";
+        if (!key || !key[0]) {
+            return cap_im_feishu_resp_append(markdown, text, strlen(text));
+        }
+        if ((err = cap_im_feishu_resp_append(markdown, "[", 1)) != ESP_OK ||
+                (err = cap_im_feishu_resp_append(markdown, text, strlen(text))) != ESP_OK ||
+                (err = cap_im_feishu_resp_append(markdown,
+                                                 "](feishu:file:",
+                                                 sizeof("](feishu:file:") - 1)) != ESP_OK ||
+                (err = cap_im_feishu_resp_append(markdown, key, strlen(key))) != ESP_OK ||
+                (err = cap_im_feishu_resp_append(markdown, ")", 1)) != ESP_OK) {
+            return err;
+        }
+        return ESP_OK;
+    }
+
+    if (strcmp(tag, "code_block") == 0) {
+        language_json = cJSON_GetObjectItem(element, "language");
+        if ((err = cap_im_feishu_resp_append(markdown, "\n```", 4)) != ESP_OK) {
+            return err;
+        }
+        if (cJSON_IsString(language_json) && language_json->valuestring && language_json->valuestring[0] &&
+                (err = cap_im_feishu_resp_append(markdown,
+                                                 language_json->valuestring,
+                                                 strlen(language_json->valuestring))) != ESP_OK) {
+            return err;
+        }
+        if ((err = cap_im_feishu_resp_append(markdown, "\n", 1)) != ESP_OK ||
+                (err = cap_im_feishu_resp_append(markdown, text, strlen(text))) != ESP_OK ||
+                (err = cap_im_feishu_resp_append(markdown, "\n```\n", 5)) != ESP_OK) {
+            return err;
+        }
+        return ESP_OK;
+    }
+
+    if (strcmp(tag, "hr") == 0) {
+        return cap_im_feishu_resp_append(markdown, "\n---\n", 5);
+    }
+
+    return cap_im_feishu_resp_append(markdown, text, strlen(text));
+}
+
+static char *cap_im_feishu_extract_post_markdown(const char *content_json)
+{
+    cJSON *root = NULL;
+    cJSON *body = NULL;
+    cJSON *title_json = NULL;
+    cJSON *content_json_array = NULL;
+    cJSON *paragraph = NULL;
+    cJSON *element = NULL;
+    cap_im_feishu_resp_t markdown = {0};
+    char *result = NULL;
+    esp_err_t err;
+
+    if (!content_json || !content_json[0]) {
+        return NULL;
+    }
+
+    root = cJSON_Parse(content_json);
+    if (!root) {
+        return NULL;
+    }
+
+    body = cap_im_feishu_post_select_body(root);
+    content_json_array = cJSON_IsObject(body) ? cJSON_GetObjectItem(body, "content") : NULL;
+    if (!cJSON_IsArray(content_json_array)) {
+        cJSON_Delete(root);
+        return NULL;
+    }
+
+    err = cap_im_feishu_resp_init(&markdown);
+    if (err != ESP_OK) {
+        cJSON_Delete(root);
+        return NULL;
+    }
+
+    title_json = cJSON_GetObjectItem(body, "title");
+    if (cJSON_IsString(title_json) && title_json->valuestring && title_json->valuestring[0]) {
+        err = cap_im_feishu_resp_append(&markdown, "**", 2);
+        if (err == ESP_OK) {
+            err = cap_im_feishu_resp_append(&markdown, title_json->valuestring, strlen(title_json->valuestring));
+        }
+        if (err == ESP_OK) {
+            err = cap_im_feishu_resp_append(&markdown, "**\n\n", 4);
+        }
+        if (err != ESP_OK) {
+            cap_im_feishu_resp_free(&markdown);
+            cJSON_Delete(root);
+            return NULL;
+        }
+    }
+
+    cJSON_ArrayForEach(paragraph, content_json_array) {
+        if (!cJSON_IsArray(paragraph)) {
+            continue;
+        }
+
+        cJSON_ArrayForEach(element, paragraph) {
+            err = cap_im_feishu_post_append_element(&markdown, element);
+            if (err != ESP_OK) {
+                cap_im_feishu_resp_free(&markdown);
+                cJSON_Delete(root);
+                return NULL;
+            }
+        }
+
+        err = cap_im_feishu_resp_append(&markdown, "\n", 1);
+        if (err != ESP_OK) {
+            cap_im_feishu_resp_free(&markdown);
+            cJSON_Delete(root);
+            return NULL;
+        }
+    }
+
+    while (markdown.len > 0 &&
+            (markdown.buf[markdown.len - 1] == '\n' || markdown.buf[markdown.len - 1] == '\r' ||
+             markdown.buf[markdown.len - 1] == ' ' || markdown.buf[markdown.len - 1] == '\t')) {
+        markdown.len--;
+        markdown.buf[markdown.len] = '\0';
+    }
+
+    if (markdown.len > 0) {
+        result = markdown.buf;
+        markdown.buf = NULL;
+    }
+
+    cap_im_feishu_resp_free(&markdown);
+    cJSON_Delete(root);
+    return result;
+}
+
 static void cap_im_feishu_handle_message_event(cJSON *event)
 {
     cJSON *message = NULL;
@@ -1709,6 +2040,38 @@ static void cap_im_feishu_handle_message_event(cJSON *event)
             ESP_LOGI(TAG, "Feishu text inbound chat=%s route=%s message=%s", chat_id, route_id, message_id);
         }
         free(text);
+        return;
+    }
+
+    if (strcmp(message_type, "post") == 0) {
+        char *markdown = cap_im_feishu_extract_post_markdown(content_json->valuestring);
+        char *clean = NULL;
+        esp_err_t err;
+
+        if (!markdown) {
+            ESP_LOGW(TAG, "Feishu post content parse failed message=%s", message_id);
+            return;
+        }
+
+        clean = markdown;
+        if (strncmp(clean, "@_user_1 ", 9) == 0) {
+            clean += 9;
+        }
+        while (*clean == ' ' || *clean == '\n') {
+            clean++;
+        }
+        if (!clean[0]) {
+            free(markdown);
+            return;
+        }
+
+        err = cap_im_feishu_publish_inbound_text(route_id, sender_id, message_id, clean);
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG, "Feishu post inbound publish failed: %s", esp_err_to_name(err));
+        } else {
+            ESP_LOGI(TAG, "Feishu post inbound chat=%s route=%s message=%s", chat_id, route_id, message_id);
+        }
+        free(markdown);
         return;
     }
 
