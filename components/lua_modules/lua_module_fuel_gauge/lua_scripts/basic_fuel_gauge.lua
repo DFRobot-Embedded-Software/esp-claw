@@ -1,4 +1,4 @@
-local bq27220 = require("lib_bq27220")
+local fuel_gauge = require("lib_fuel_gauge")
 local delay = require("delay")
 local i2c = require("i2c")
 
@@ -11,7 +11,8 @@ local function int_arg(k, default)
     return default
 end
 
-local I2C_ADDR = int_arg("addr", 0x55)
+local CHIP = type(a.chip) == "string" and a.chip or nil
+local I2C_ADDR = int_arg("addr", nil)
 local FREQ_HZ = int_arg("freq_hz", 400000)
 local SAMPLE_COUNT = int_arg("samples", 20)
 local INTERVAL_MS = int_arg("interval_ms", 1000)
@@ -39,24 +40,33 @@ local function run()
     local sda = int_arg("sda", 14)
     local scl = int_arg("scl", 13)
     bus = a.bus or i2c.new(port, sda, scl, FREQ_HZ)
-    print(string.format(
-        "[bq27220] opening addr=0x%02X freq=%d",
-        I2C_ADDR, FREQ_HZ
-    ))
-    gauge = bq27220.new({
+
+    local opts = {
         bus = bus,
-        addr = I2C_ADDR,
+        chip = CHIP,
         freq_hz = FREQ_HZ,
-    })
+    }
+    if I2C_ADDR then
+        opts.addr = I2C_ADDR
+    end
+
+    gauge = fuel_gauge.new(opts)
+    print(string.format(
+        "[fuel_gauge] opened chip=%s addr=0x%02X",
+        gauge:chip(), gauge:address()
+    ))
 
     for i = 1, SAMPLE_COUNT do
         local sample = gauge:read()
+        local current_str = sample.current_ma
+            and string.format(" current=%dmA", sample.current_ma)
+            or ""
         print(string.format(
-            "[bq27220] #%d soc=%d%% voltage=%dmV current=%dmA",
+            "[fuel_gauge] #%d soc=%d%% voltage=%dmV%s",
             i,
             sample.soc,
             sample.voltage_mv,
-            sample.current_ma
+            current_str
         ))
         delay.delay_ms(INTERVAL_MS)
     end
