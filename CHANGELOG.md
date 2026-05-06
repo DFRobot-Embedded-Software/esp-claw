@@ -24,7 +24,7 @@
 
 * Added shared `app_claw` integration for the new Lua environmental sensor and magnetometer modules, including Kconfig, component dependencies, and Lua module registration.
 
-* Added the `lua_module_environmental_sensor` module with Lua-facing sensor APIs and a `basic_environmental_sensor.lua` example script.
+* Added the `lua_module_environmental_sensor` module with Lua-facing sensor APIs and an `environmental_read.lua` example script.
 
 * Added the `lua_module_magnetometer` module with bundled `bmm350` driver sources, Lua bindings, example scripts, and skill metadata.
 
@@ -108,11 +108,19 @@
 
 * Reworked `cap_time` to use SNTP-based synchronization, added on-demand current time retrieval, and injected a time context provider for relative date reasoning in `claw_core`.
 
+* Added standard directory-based skill packaging with JSON frontmatter, generated skill sync tooling, and migrated shipped capability, memory, and Edge Agent skills from flat markdown files to `SKILL.md` directories.
+
+* Added Lua module build and sync tooling for generated builtin Lua module/script skills, including module docs, script source metadata, shared Lua sync helpers, and the `lua_led_strip_switch` skill.
+
+* Updated the ESP32-S3 DevKitC-1 breadboard UAC codec lifecycle to separate open/start/stop/close handling, track stream state, reuse device handles, and close devices on delete or disconnect.
+
 ### Change:
 
 * Migrated selected Basic Demo updates into Edge Agent, including app configuration handling, HTTP UI updates, Lua module wiring, and default SDK configuration changes.
 
 * Moved `dfrobot_k10` and other shipped board definitions into vendor-specific subdirectories, and relocated the LilyGO T-Display-S3 board assets from `basic_demo` to `edge_agent`.
+
+* Reorganized Lua module documentation and examples into `docs/`, `lua_scripts/test`, and `lua_scripts/lib`, replacing per-module `skills_list.json` files with generated skill sources.
 
 ### Fix:
 

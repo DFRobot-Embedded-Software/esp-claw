@@ -3,7 +3,7 @@ idf_component_register(
         "src/lua_module_magnetometer.c"
         "src/bmm350.c"
     INCLUDE_DIRS
-        "include"
+        "src"
         "src"
     REQUIRES
         cap_lua
