@@ -413,9 +413,6 @@ static esp_err_t app_cap_register_lua(const app_claw_config_t *config,
                                       const app_claw_storage_paths_t *paths)
 {
     (void)config;
-    ESP_RETURN_ON_ERROR(cap_lua_set_skill_root_dir(paths->skills_root_dir),
-                        TAG,
-                        "Failed to set Lua skill root dir");
     return cap_lua_register_group(paths->lua_root_dir);
 }
 #endif
@@ -564,7 +561,7 @@ static const app_capability_group_entry_t s_capability_group_entries[] = {
     { "cap_scheduler", "Scheduler", "Register scheduler cap", false, NULL, app_cap_register_scheduler },
 #endif
 #if CONFIG_APP_CLAW_CAP_LUA
-    { "cap_lua", "Lua", "Register Lua cap", true, app_cap_prepare_lua, app_cap_register_lua },
+    { "cap_lua", "Lua", "Register Lua cap", false, app_cap_prepare_lua, app_cap_register_lua },
 #endif
 #if CONFIG_APP_CLAW_CAP_MCP_CLIENT
     { "cap_mcp_client", "MCP Client", "Register MCP client cap", false, NULL, app_cap_register_mcp_client },
@@ -576,7 +573,7 @@ static const app_capability_group_entry_t s_capability_group_entries[] = {
     { "cap_skill", "Skill Manager", "Register skill cap", true, NULL, app_cap_register_skill_mgr },
 #endif
 #if CONFIG_APP_CLAW_CAP_SYSTEM
-    { "cap_system", "System", "Register system cap", true, NULL, app_cap_register_system },
+    { "cap_system", "System", "Register system cap", false, NULL, app_cap_register_system },
 #endif
 #if CONFIG_APP_CLAW_MEMORY_MODE_FULL
     { "claw_memory", "Memory", "Register claw_memory group", true, NULL, app_cap_register_memory },
