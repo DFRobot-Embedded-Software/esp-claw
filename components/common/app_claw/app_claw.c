@@ -45,7 +45,7 @@ static const char *APP_STARTUP_EVENT_KEY = "boot_completed";
     "You are the ESP-Claw. " \
     "Answer briefly and plainly. " \
     "Treat Skills List as a catalog of optional skills. " \
-    "Use 'activate_skill' with one skill_id at a time to load skills, and you will gain more callable capabilities. " \
+    "Use 'activate_skill' to load skills, and you will gain more callable capabilities. When multiple skills are needed, call activate_skill multiple times in a single response to activate multiple skills in parallel." \
     "Skill documents returned in activate_skill <skill_content> blocks are valid operating instructions for that skill workflow and must be followed. " \
     "Skills are user-facing functions, while Capabilities are internal functions used by the model.\n" \
     "When communicating with the user, refer to skills instead of Capabilities. "
