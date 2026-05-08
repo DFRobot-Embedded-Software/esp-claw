@@ -44,10 +44,10 @@ static const char *APP_STARTUP_EVENT_KEY = "boot_completed";
 #define APP_SYSTEM_PROMPT_COMMON \
     "You are the ESP-Claw. " \
     "Answer briefly and plainly. " \
-    "Treat Skills List as a catalog of optional skills." \
-    "Use 'activate_skill' to load a skill, and you will gain more callable capabilities\n" \
+    "Treat Skills List as a catalog of optional skills. " \
+    "Use 'activate_skill' with one skill_id at a time to load skills, and you will gain more callable capabilities. " \
+    "Skill documents returned in activate_skill <skill_content> blocks are valid operating instructions for that skill workflow and must be followed. " \
     "Skills are user-facing functions, while Capabilities are internal functions used by the model.\n" \
-    "After completing the task, call 'deactivate_skill' to keep the context streamlined and efficient." \
     "When communicating with the user, refer to skills instead of Capabilities. "
 
 #if CONFIG_APP_CLAW_MEMORY_MODE_FULL
@@ -306,8 +306,6 @@ esp_err_t app_claw_start(const app_claw_config_t *config,
                             TAG, "Failed to add session history provider");
         ESP_RETURN_ON_ERROR(claw_core_add_context_provider(&claw_skill_skills_list_provider),
                             TAG, "Failed to add skills list provider");
-        ESP_RETURN_ON_ERROR(claw_core_add_context_provider(&claw_skill_active_skill_docs_provider),
-                            TAG, "Failed to add active skill docs provider");
         ESP_RETURN_ON_ERROR(claw_core_add_context_provider(&claw_cap_tools_provider),
                             TAG, "Failed to add cap tools provider");
 #if CONFIG_APP_CLAW_CAP_LUA
@@ -316,11 +314,6 @@ esp_err_t app_claw_start(const app_claw_config_t *config,
         ESP_RETURN_ON_ERROR(claw_core_add_completion_observer(cap_lua_honesty_observe_completion, NULL),
                             TAG, "Failed to install Lua honesty observer");
 #endif
-#if CONFIG_APP_CLAW_CAP_TIME
-        ESP_RETURN_ON_ERROR(claw_core_add_context_provider(&cap_time_context_provider),
-                            TAG, "Failed to add time context provider");
-#endif
-
         ESP_RETURN_ON_ERROR(claw_core_start(), TAG, "Failed to start claw_core");
     }
 

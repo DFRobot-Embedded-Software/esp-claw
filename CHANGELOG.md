@@ -13,6 +13,12 @@
 * **Breaking change**: Removed the LLM Profile concept. You may need to update your LLM configuration accordingly.
   * A forward compatibility transition has been added for now and will be removed in a future release.
 
+### Feature:
+
+* Updated Skills activation to keep the system prompt stable: `activate_skill` now accepts one `skill_id` per call and returns the full Skill markdown document in a `<skill_content>` tool result, while active skills only affect session-visible capability groups.
+  * Removed automatic active Skill document prompt injection and the `deactivate_skill` flow.
+  * Removed time context and part of session context from system prompt to keep it stable.
+
 ## 2026-05-07
 
 ### Tools:
