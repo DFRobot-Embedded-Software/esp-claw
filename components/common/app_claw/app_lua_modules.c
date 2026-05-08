@@ -58,9 +58,6 @@
 #if CONFIG_APP_CLAW_LUA_MODULE_ENVIRONMENTAL_SENSOR
 #include "lua_module_environmental_sensor.h"
 #endif
-#if CONFIG_APP_CLAW_LUA_MODULE_ESP_HEAP
-#include "lua_module_esp_heap.h"
-#endif
 #if CONFIG_APP_CLAW_LUA_MODULE_EVENT_PUBLISHER
 #include "lua_module_event_publisher.h"
 #endif
@@ -333,14 +330,6 @@ static esp_err_t app_lua_register_environmental_sensor(const char *fatfs_base_pa
 }
 #endif
 
-#if CONFIG_APP_CLAW_LUA_MODULE_ESP_HEAP
-static esp_err_t app_lua_register_esp_heap(const char *fatfs_base_path)
-{
-    (void)fatfs_base_path;
-    return lua_module_esp_heap_register();
-}
-#endif
-
 #if CONFIG_APP_CLAW_LUA_MODULE_EVENT_PUBLISHER
 static esp_err_t app_lua_register_event_publisher(const char *fatfs_base_path)
 {
@@ -473,9 +462,6 @@ static const app_lua_module_entry_t s_lua_module_entries[] = {
 #if CONFIG_APP_CLAW_LUA_MODULE_ENVIRONMENTAL_SENSOR
     { "environmental_sensor", "Environmental Sensor", app_lua_register_environmental_sensor },
 #endif
-#if CONFIG_APP_CLAW_LUA_MODULE_ESP_HEAP
-    { "esp_heap", "ESP Heap", app_lua_register_esp_heap },
-#endif
 #if CONFIG_APP_CLAW_LUA_MODULE_EVENT_PUBLISHER
     { "event_publisher", "Event Publisher", app_lua_register_event_publisher },
 #endif
@@ -555,9 +541,6 @@ static const app_lua_module_info_t s_lua_module_infos[] = {
 #endif
 #if CONFIG_APP_CLAW_LUA_MODULE_ENVIRONMENTAL_SENSOR
     { "environmental_sensor", "Environmental Sensor" },
-#endif
-#if CONFIG_APP_CLAW_LUA_MODULE_ESP_HEAP
-    { "esp_heap", "ESP Heap" },
 #endif
 #if CONFIG_APP_CLAW_LUA_MODULE_EVENT_PUBLISHER
     { "event_publisher", "Event Publisher" },
