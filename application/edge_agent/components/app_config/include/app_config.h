@@ -21,6 +21,8 @@ extern "C" {
 typedef struct {
     char wifi_ssid[APP_CONFIG_STR_LEN];
     char wifi_password[APP_CONFIG_STR_LEN];
+    char ap_ssid[APP_CONFIG_STR_LEN];
+    char ap_password[APP_CONFIG_STR_LEN];
     char llm_api_key[APP_CONFIG_STR_LEN];
     char llm_backend_type[32];
     char llm_model[64];

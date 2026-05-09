@@ -1,6 +1,8 @@
 export type AppConfig = {
   wifi_ssid: string;
   wifi_password: string;
+  ap_ssid: string;
+  ap_password: string;
   llm_api_key: string;
   llm_backend_type: string;
   llm_model: string;
@@ -42,7 +44,7 @@ export type ConfigGroup =
   | 'time';
 
 export const GROUP_FIELDS: Record<ConfigGroup, (keyof AppConfig)[]> = {
-  wifi: ['wifi_ssid', 'wifi_password'],
+  wifi: ['wifi_ssid', 'wifi_password', 'ap_ssid', 'ap_password'],
   llm: [
     'llm_api_key',
     'llm_backend_type',

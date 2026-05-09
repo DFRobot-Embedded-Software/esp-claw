@@ -104,6 +104,11 @@ static uint32_t wifi_manager_max_retry(void)
 
 static void compose_ap_ssid(void)
 {
+    if (s_config.ap_ssid && s_config.ap_ssid[0] != '\0') {
+        strlcpy(s_ap_ssid, s_config.ap_ssid, sizeof(s_ap_ssid));
+        ESP_LOGI(TAG, "Custom AP SSID: %s", s_ap_ssid);
+        return;
+    }
     uint8_t mac[6] = {0};
     if (esp_read_mac(mac, ESP_MAC_WIFI_SOFTAP) != ESP_OK) {
         esp_read_mac(mac, ESP_MAC_WIFI_STA);
@@ -120,7 +125,12 @@ static void apply_ap_config(void)
     ap_cfg.ap.ssid_len = strlen(s_ap_ssid);
     ap_cfg.ap.channel = wifi_manager_ap_channel();
     ap_cfg.ap.max_connection = wifi_manager_ap_max_conn();
-    ap_cfg.ap.authmode = WIFI_AUTH_OPEN;
+    if (s_config.ap_password && s_config.ap_password[0] != '\0') {
+        ap_cfg.ap.authmode = WIFI_AUTH_WPA2_PSK;
+        strlcpy((char *)ap_cfg.ap.password, s_config.ap_password, sizeof(ap_cfg.ap.password));
+    } else {
+        ap_cfg.ap.authmode = WIFI_AUTH_OPEN;
+    }
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &ap_cfg));
 }
 

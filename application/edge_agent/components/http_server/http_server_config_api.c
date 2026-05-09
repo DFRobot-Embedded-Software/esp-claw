@@ -38,6 +38,8 @@ typedef struct {
 static const config_field_def_t CONFIG_FIELDS[] = {
     CONFIG_FIELD("wifi",         wifi_ssid),
     CONFIG_FIELD("wifi",         wifi_password),
+    CONFIG_FIELD("wifi",         ap_ssid),
+    CONFIG_FIELD("wifi",         ap_password),
 
     CONFIG_FIELD("llm",          llm_api_key),
     CONFIG_FIELD("llm",          llm_backend_type),

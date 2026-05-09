@@ -62,6 +62,14 @@ export const en = {
   wifiValidationPasswordLength:
     'Wi-Fi password must be empty or at least 8 characters long.',
 
+  apName: 'AP Name',
+  apPassword: 'AP Password',
+  apNameHint: 'Current: {ssid}. Leave empty to keep default name. Changes apply after restart.',
+  apPasswordHint: 'Leave empty for open AP. Must be at least 8 characters if set.',
+  apValidationNameRequired: 'AP Name is required.',
+  apValidationPasswordLength:
+    'AP password must be empty or at least 8 characters long.',
+
   sectionStatusNetwork: 'Network',
   sectionStatusStorage: 'Storage',
   sysInfoWifi: 'Wi-Fi',

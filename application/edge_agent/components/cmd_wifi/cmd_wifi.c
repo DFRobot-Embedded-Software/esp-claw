@@ -144,6 +144,8 @@ static int cmd_wifi_apply_loaded_config(const app_config_t *config, const char *
     esp_err_t err = wifi_manager_apply_sta_config(&(wifi_manager_config_t) {
         .sta_ssid = config->wifi_ssid,
         .sta_password = config->wifi_password,
+        .ap_ssid = config->ap_ssid[0] ? config->ap_ssid : NULL,
+        .ap_password = config->ap_password[0] ? config->ap_password : NULL,
     });
 
     if (err != ESP_OK) {
