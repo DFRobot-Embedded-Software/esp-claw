@@ -1,5 +1,11 @@
 # ChangeLog
 
+## 2026-05-09
+
+### Fix:
+
+* LLM HTTP transport (`claw_llm_http_post_json`): copy and sanitize JSON request bodies so invalid UTF-8 sequences are replaced before POST, avoiding stack/client issues on malformed input. (https://github.com/espressif/esp-claw/pull/58, Thanks @yuzheyi.)
+
 ## 2026-05-08
 
 ### Refactor:
