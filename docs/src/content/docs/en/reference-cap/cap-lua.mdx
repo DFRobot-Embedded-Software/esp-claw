@@ -188,7 +188,7 @@ running -> stopped
 
 ## Coordination With Skills
 
-The `cap_lua` Skill instructs the model to check and stop running Lua async jobs before deactivating the Skill. At runtime, `cap_lua_async_jobs_provider` also injects the current async-job summary into context so the model can avoid leaving long-lived jobs behind.
+The `cap_lua` Skill instructs the model to inspect running Lua async jobs with `lua_list_async_jobs` / `lua_get_async_job` before stopping, replacing, or deactivating long-lived work.
 
 <Aside type="tip">
   **Suggested workflow:** For peripheral-heavy scripts (continuous animation), submit with `lua_run_script_async` so the LLM can tell the user “started” immediately, then poll `lua_get_async_job` without stalling the Agent loop on a long script.

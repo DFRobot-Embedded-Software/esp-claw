@@ -308,12 +308,6 @@ esp_err_t app_claw_start(const app_claw_config_t *config,
                             TAG, "Failed to add skills list provider");
         ESP_RETURN_ON_ERROR(claw_core_add_context_provider(&claw_cap_tools_provider),
                             TAG, "Failed to add cap tools provider");
-#if CONFIG_APP_CLAW_CAP_LUA
-        ESP_RETURN_ON_ERROR(claw_core_add_context_provider(&cap_lua_async_jobs_provider),
-                            TAG, "Failed to add Lua async jobs provider");
-        ESP_RETURN_ON_ERROR(claw_core_add_completion_observer(cap_lua_honesty_observe_completion, NULL),
-                            TAG, "Failed to install Lua honesty observer");
-#endif
         ESP_RETURN_ON_ERROR(claw_core_start(), TAG, "Failed to start claw_core");
     }
 
