@@ -1,7 +1,7 @@
 ---
 {
   "name": "skill_creator",
-  "description": "Create, register, update, or remove skills with Lua support.",
+  "description": "Create or update reusable model-invoked skills, workflows, and Lua-backed capabilities.",
   "metadata": {
     "cap_groups": [
       "cap_skill"
@@ -13,9 +13,28 @@
 
 # Skill Creator
 
-Use this skill when the user asks to create, register, update, or remove a skill, or asks how to create a skill that includes Lua files.
+Use this skill when the user wants to add a new reusable feature that the model should be able to invoke later as a skill, including tool-like workflows, project-specific capabilities, Lua-backed automations, or feature requests phrased as "add a function", "support doing X", "make the model able to X", "create a tool for X", or "新增一个功能".
 
-For Lua-backed skills, follow the Lua-specific reference before generating or editing Lua files.
+Also use this skill when the user asks to create, register, update, or remove a skill, or asks how to create a skill that includes Lua files.
+
+Do not use this skill for ordinary product or firmware code changes that only modify the application behavior and do not create, update, register, or remove a reusable model-invoked skill.
+
+For Lua-backed skills, this skill is the entry point. Activate `cap_lua` together with or after `skill_creator` only when Lua authoring, path rules, run-tool behavior, or async semantics are needed.
+
+Default split: if the user asks to add, implement, enable, or support behavior and does not clearly say it is temporary or standalone Lua, treat it as a reusable skill workflow. Use `cap_lua` directly only for temporary experiments, tests, demos, debugging, existing script operations, or a user-explicit standalone Lua file.
+
+## Activation Guide
+
+Activate this skill when the request matches any of these patterns:
+
+- The user asks for a new feature that should become a reusable instruction package or callable model capability.
+- The user asks to add a new automation, workflow, script-backed action, or domain-specific assistant behavior.
+- The user asks to make future conversations able to perform a task without re-explaining all implementation details.
+- The user asks to add or implement behavior and does not explicitly say it is temporary, experimental, or a standalone Lua file.
+- The user asks to create or update files under a `skills/<skill_id>/` directory.
+- The user asks to register, unregister, inspect, or refresh skill metadata.
+
+Before creating a skill, decide whether the requested feature is better represented as a skill or as normal application/component code. If the feature needs firmware APIs, persistent services, drivers, UI, HTTP endpoints, or runtime C behavior, implement that code in the appropriate component first, then use this skill only for the model-facing workflow that invokes or documents the capability.
 
 ## Core Rules
 
@@ -99,7 +118,7 @@ Rules:
 Flow:
 
 1. Decide the user-facing behavior, title, description, capability groups, whether Lua is needed, and bundled file names.
-2. If Lua is needed, read `{CUR_SKILL_DIR}/references/write_lua.md`.
+2. If Lua is needed, keep `skill_creator` as the workflow owner, activate `cap_lua` only for Lua path and runtime rules, then read `{CUR_SKILL_DIR}/references/write_lua.md` for authoring patterns.
 3. Check the target `skills/<skill_id>/` directory does not already exist unless the user explicitly asked to update or replace that skill.
 4. Write the complete `SKILL.md` and any optional bundled files into a valid source `skills/<skill_id>/` directory.
 5. Make semantic sections specific to the skill: trigger wording, prerequisites, `Recommended Flow`, args schema, and script behavior when Lua is used.
@@ -162,7 +181,9 @@ For a non-Lua skill, omit Lua-specific sections and include only the capability 
 
 ## Create A Lua File
 
-Read `{CUR_SKILL_DIR}/references/write_lua.md` before creating or editing Lua files. It contains the Lua template, script path rules, module documentation strategy, authoring rules, and quality rules.
+For reusable user-facing behavior, create or edit Lua only under the skill-owned `scripts/` directory and keep this skill as the workflow owner. Activate `cap_lua` together with or after this skill only to load Lua path rules, run-tool behavior, and async semantics, then read `{CUR_SKILL_DIR}/references/write_lua.md` for the Lua template, module documentation strategy, authoring rules, and quality rules.
+
+Do not create bare Lua files for ambiguous "add a feature" requests. Bare Lua files are only appropriate for temporary experiments, tests, demos, debugging, existing script maintenance, or when the user explicitly asks for a standalone Lua file.
 
 ## Register Every Created Skill
 

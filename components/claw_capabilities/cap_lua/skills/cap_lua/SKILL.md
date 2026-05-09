@@ -1,7 +1,7 @@
 ---
 {
   "name": "cap_lua",
-  "description": "Discover, read, run, inspect, and stop Lua scripts, including async Lua jobs.",
+  "description": "Run, inspect, debug, and manage existing or temporary Lua scripts; use skill_creator for reusable features.",
   "metadata": {
     "cap_groups": [
       "cap_lua"
@@ -13,45 +13,35 @@
 
 # Lua Script Operations
 
-Use this skill for Lua scripts: discover scripts, read module docs, run scripts, and manage async jobs.
+Use this skill for existing Lua scripts and explicitly temporary or standalone Lua scripts: discover scripts, read module docs, run scripts, and manage async jobs.
+
+Activation boundary: do not use this skill as the entry point for creating new reusable user-facing features, new skills, or new Lua-backed capabilities. Activate `skill_creator` first for that workflow, then use `cap_lua` only when Lua authoring or runtime rules are needed.
+
+Creation boundary: this skill may create or edit Lua files only for temporary experiments, tests, demos, debugging, or when the user explicitly asks for a standalone Lua file. If the user asks to add or implement behavior and does not clearly say it is temporary or standalone, treat it as a reusable skill workflow and activate `skill_creator` first.
 
 ## Path Rules
 
-There are two path namespaces. Do not mix them:
+Logical categories you will see in `list_dir` results and can use as `keyword` filters:
 
-- Lua run paths: used by `lua_run_script` and `lua_run_script_async`
-- File paths: used by `list_dir` and `read_file`
+- `builtin/test/` — shipped examples, tests, and demos. Read these for patterns; treat as read-only unless the user explicitly asks to change them.
+- `builtin/lib/` — reusable Lua libraries; read the matching `.md` guide before requiring.
+- `docs/` — module API docs.
+- Skill-owned scripts — exposed by an active skill's instructions, which already give you the exact path to pass to the run tools.
 
-Rules:
+Requirements for `lua_run_script` / `lua_run_script_async`:
 
-- `builtin/test/` is for shipped examples, tests, and demos.
-- `builtin/lib/` is for reusable Lua libraries. Read the matching `.md` guide before using a library.
-- `docs/` is for module API docs.
-- Treat `builtin/` as read-only unless the user explicitly asks to change it.
-- Lua run tools can address managed Lua run paths and skill-owned absolute script paths, but user-facing behavior must use skill-owned scripts.
-- `list_dir` returns file paths for reference discovery.
-- Use managed Lua run paths such as `builtin/...` only for reading reference examples unless a specific skill explicitly instructs running one.
-- Do not create or run `temp/...`, `user/...`, or ad hoc generated Lua paths for user-facing work.
-- `lua_run_script` and `lua_run_script_async` must use the absolute skill script path from an active skill's instructions for user-facing work.
-- `read_file` uses file paths, not Lua run paths.
-- To run a managed script found by `list_dir`, remove exactly one leading `scripts/`.
-- To read a skill-bundled Lua file, use `skills/<skill_id>/scripts/...`.
-- Never call `read_file("scripts/scripts/...")`.
-- Never pass a bare Lua run path directly to `read_file`.
+- Use a path returned by `list_dir`, or a path the active skill's instructions provide. Do not hand-craft paths.
+- Path must end in `.lua` and must not contain `..`.
+- For user-facing behavior prefer the skill-owned path. Do not run ad hoc Lua paths for user-facing work; use a packaged skill instead.
 
 Examples:
 
-| Intent | Correct path |
+| Intent | Use |
 | --- | --- |
-| `list_dir` result | `scripts/builtin/test/abc.lua` |
-| `lua_run_script` for listed managed script | `builtin/test/abc.lua` |
-| `lua_run_script` path for user work | `{CUR_SKILL_DIR}/scripts/action.lua` |
-| `lua_run_script_async` path for user work | `{CUR_SKILL_DIR}/scripts/action.lua` |
-| `read_file` for listed script | `scripts/builtin/test/abc.lua` |
-| `read_file` for library source | `scripts/builtin/lib/arg_schema.lua` |
-| `read_file` for library guide | `scripts/builtin/lib/arg_schema.md` |
-| `read_file` for module doc | `scripts/docs/lua_module_display.md` |
-| `read_file` for skill script | `skills/skill_id/scripts/abc.lua` |
+| Find a script | `list_dir({"keyword": "blink"})` |
+| Read a discovered script or doc | `read_file({"path": "<path from list_dir>"})` |
+| Run a script | `lua_run_script({"path": "<path of script>"})` |
+| Run a script async | `lua_run_script_async({"path": "<path of script>", "name": "..."})` |
 
 ## Documentation Read Strategy
 
@@ -69,22 +59,21 @@ Call `list_dir` before reading or running unless the exact path is already confi
 
 `list_dir` input:
 
-- `keyword`: optional case-insensitive substring filter on the full file path, such as `scripts/builtin/` or `blink`.
+- `keyword`: optional case-insensitive substring filter on the full file path, such as `builtin/test`, `docs/`, or part of the filename.
 
 Reading source:
 
-- Use file paths returned by `list_dir` directly with `read_file`.
-- Convert `scripts/...` file paths to Lua run paths only when calling `lua_run_script` or `lua_run_script_async`.
+- Pass paths returned by `list_dir` directly to `read_file`, `lua_run_script`, or `lua_run_script_async`.
 
 ## Use Builtin References
 
 Before choosing modules, APIs, or arguments for Lua execution:
 
 - Prefer task-specific skills for user-facing actions.
-- Use `builtin/test/` for module or hardware validation, including advanced demos, and `builtin/lib/` only as reusable source to read or require.
+- Use `builtin/test/` results for module or hardware validation, including advanced demos, and `builtin/lib/` only as reusable source to read or require.
 - Read the `.lua` source only when needed.
 - Activate `builtin_lua_modules` and use its table to find the needed doc path.
-- Batch-read module docs with `read_file("scripts/docs/<doc-file>")`.
+- Batch-read module docs by passing the path `list_dir` returned (or the path the module table provides) to `read_file`.
 - Read the closest builtin script source and reuse its patterns.
 
 Builtin patterns:
@@ -95,10 +84,11 @@ Builtin patterns:
 
 ## Run Scripts
 
-Run Lua only through a skill-owned script path as defined in Path Rules. The skill must be activated first, and its instructions must provide the exact `{CUR_SKILL_DIR}/scripts/...` path and args contract.
+Prefer running Lua through a skill-owned script path as defined in Path Rules. For user-facing behavior, the skill must be activated first and its instructions must provide the exact script path and args contract.
 
 - Input: `path`, optional object `args`, and optional positive `timeout_ms`. Omitted or `0` timeout means `60000` ms.
-- `path` must follow the active skill's documented script path.
+- `path` must end in `.lua` and must not contain `..`. Use a path returned by `list_dir`, or a path the active skill's instructions provide. Do not hand-craft paths.
+- For user-facing work, `path` should follow the active skill's documented script path; `builtin/...` reference scripts are allowed for inspection and demos only.
 - `args` is a JSON object keyed by parameter name, for example `"args":{"enabled":true}`. Lua reads it from global `args`.
 - No output returns `Lua script completed with no output.`.
 - Long output ends with `[output truncated]`. On failure, error text is appended after captured output.
@@ -143,14 +133,13 @@ Stopping rules:
 ## IM And Events From Lua
 
 - For direct user replies, images, or files that do not depend on Lua runtime state, prefer calling the corresponding IM capability outside Lua.
-- For router trigger events from Lua, read `builtin/test/llm_analyze_trigger.lua` and the event publisher docs before emitting a table event.
+- For router trigger events from Lua, find `llm_analyze_trigger.lua` via `list_dir({"keyword": "llm_analyze_trigger"})`, read it, and review the event publisher docs before emitting a table event.
 
 ## Recommended Flow
 
-1. Classify the task as run an existing skill-owned script, create or update a Lua-backed packaged skill, inspect or stop async jobs, or use Lua docs/references.
+1. Classify the task as run an existing skill-owned script, inspect or stop async jobs, or use Lua docs/references.
 2. For existing behavior, activate the task-specific skill first and use only the script path and args documented by that active skill.
-3. For new or adapted Lua behavior, activate `skill_creator` and create or update a packaged skill with Lua under `skills/<skill_id>/scripts/`.
-4. Activate `builtin_lua_modules` before running or adapting Lua, then read only the needed module docs from `scripts/docs/*.md`.
-5. Use `list_dir` and `builtin/test/` only to find reference patterns unless a specific skill explicitly instructs running a builtin script.
-6. Choose sync execution for short scripts and async execution for long-running or hardware-owning scripts.
-7. Stop or replace async jobs with the relevant Lua tool before saying they are stopped or switched.
+3. Activate `builtin_lua_modules` before running or adapting Lua, then read only the needed module docs (find them via `list_dir({"keyword": "docs/"})` or the module table).
+4. Use `list_dir` with a `builtin/test` keyword only to find reference patterns; do not run those scripts for user-facing work unless a specific skill explicitly instructs doing so (in which case pass the path `list_dir` returned directly).
+5. Choose sync execution for short scripts and async execution for long-running or hardware-owning scripts.
+6. Stop or replace async jobs with the relevant Lua tool before saying they are stopped or switched.
