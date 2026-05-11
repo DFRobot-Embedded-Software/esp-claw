@@ -76,7 +76,7 @@
 #if CONFIG_APP_CLAW_LUA_MODULE_LCD
 #include "lua_module_lcd.h"
 #endif
-#if CONFIG_APP_CLAW_LUA_MODULE_LCD_TOUCH && defined(CONFIG_ESP_BOARD_DEV_LCD_TOUCH_I2C_SUPPORT)
+#if CONFIG_APP_CLAW_LUA_MODULE_LCD_TOUCH && defined(CONFIG_ESP_BOARD_DEV_LCD_TOUCH_SUPPORT) && defined(CONFIG_ESP_BOARD_DEV_LCD_TOUCH_SUB_I2C_SUPPORT)
 #include "lua_module_lcd_touch.h"
 #endif
 #if CONFIG_APP_CLAW_LUA_MODULE_LED_STRIP
@@ -84,6 +84,9 @@
 #endif
 #if CONFIG_APP_CLAW_LUA_MODULE_MAGNETOMETER
 #include "lua_module_magnetometer.h"
+#endif
+#if CONFIG_APP_CLAW_LUA_MODULE_SCI
+#include "lua_module_sci.h"
 #endif
 #if CONFIG_APP_CLAW_LUA_MODULE_STORAGE
 #include "lua_module_storage.h"
@@ -378,7 +381,7 @@ static esp_err_t app_lua_register_lcd(const char *fatfs_base_path)
 }
 #endif
 
-#if CONFIG_APP_CLAW_LUA_MODULE_LCD_TOUCH && defined(CONFIG_ESP_BOARD_DEV_LCD_TOUCH_I2C_SUPPORT)
+#if CONFIG_APP_CLAW_LUA_MODULE_LCD_TOUCH && defined(CONFIG_ESP_BOARD_DEV_LCD_TOUCH_SUPPORT) && defined(CONFIG_ESP_BOARD_DEV_LCD_TOUCH_SUB_I2C_SUPPORT)
 static esp_err_t app_lua_register_lcd_touch(const char *fatfs_base_path)
 {
     (void)fatfs_base_path;
@@ -399,6 +402,14 @@ static esp_err_t app_lua_register_magnetometer(const char *fatfs_base_path)
 {
     (void)fatfs_base_path;
     return lua_module_magnetometer_register();
+}
+#endif
+
+#if CONFIG_APP_CLAW_LUA_MODULE_SCI
+static esp_err_t app_lua_register_sci(const char *fatfs_base_path)
+{
+    (void)fatfs_base_path;
+    return lua_module_sci_register();
 }
 #endif
 
@@ -480,7 +491,7 @@ static const app_lua_module_entry_t s_lua_module_entries[] = {
 #if CONFIG_APP_CLAW_LUA_MODULE_LCD
     { "lcd", "LCD", app_lua_register_lcd },
 #endif
-#if CONFIG_APP_CLAW_LUA_MODULE_LCD_TOUCH && defined(CONFIG_ESP_BOARD_DEV_LCD_TOUCH_I2C_SUPPORT)
+#if CONFIG_APP_CLAW_LUA_MODULE_LCD_TOUCH && defined(CONFIG_ESP_BOARD_DEV_LCD_TOUCH_SUPPORT) && defined(CONFIG_ESP_BOARD_DEV_LCD_TOUCH_SUB_I2C_SUPPORT)
     { "lcd_touch", "LCD Touch", app_lua_register_lcd_touch },
 #endif
 #if CONFIG_APP_CLAW_LUA_MODULE_LED_STRIP
@@ -488,6 +499,9 @@ static const app_lua_module_entry_t s_lua_module_entries[] = {
 #endif
 #if CONFIG_APP_CLAW_LUA_MODULE_MAGNETOMETER
     { "magnetometer", "Magnetometer", app_lua_register_magnetometer },
+#endif
+#if CONFIG_APP_CLAW_LUA_MODULE_SCI
+    { "sci", "DFRobot SCI", app_lua_register_sci },
 #endif
 #if CONFIG_APP_CLAW_LUA_MODULE_STORAGE
     { "storage", "Storage", app_lua_register_storage },
@@ -560,7 +574,7 @@ static const app_lua_module_info_t s_lua_module_infos[] = {
 #if CONFIG_APP_CLAW_LUA_MODULE_LCD
     { "lcd", "LCD" },
 #endif
-#if CONFIG_APP_CLAW_LUA_MODULE_LCD_TOUCH && defined(CONFIG_ESP_BOARD_DEV_LCD_TOUCH_I2C_SUPPORT)
+#if CONFIG_APP_CLAW_LUA_MODULE_LCD_TOUCH && defined(CONFIG_ESP_BOARD_DEV_LCD_TOUCH_SUPPORT) && defined(CONFIG_ESP_BOARD_DEV_LCD_TOUCH_SUB_I2C_SUPPORT)
     { "lcd_touch", "LCD Touch" },
 #endif
 #if CONFIG_APP_CLAW_LUA_MODULE_LED_STRIP
@@ -568,6 +582,9 @@ static const app_lua_module_info_t s_lua_module_infos[] = {
 #endif
 #if CONFIG_APP_CLAW_LUA_MODULE_MAGNETOMETER
     { "magnetometer", "Magnetometer" },
+#endif
+#if CONFIG_APP_CLAW_LUA_MODULE_SCI
+    { "sci", "DFRobot SCI" },
 #endif
 #if CONFIG_APP_CLAW_LUA_MODULE_STORAGE
     { "storage", "Storage" },

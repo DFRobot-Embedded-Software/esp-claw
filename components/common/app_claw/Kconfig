@@ -317,7 +317,7 @@ menu "App Claw Config"
 
         config APP_CLAW_LUA_MODULE_LCD_TOUCH
             bool "Enable LCD touch Lua module"
-            default y if ESP_BOARD_DEV_LCD_TOUCH_I2C_SUPPORT
+            default y if ESP_BOARD_DEV_LCD_TOUCH_SUPPORT && ESP_BOARD_DEV_LCD_TOUCH_SUB_I2C_SUPPORT
             default n
             help
                 Enable the LCD touch Lua module and keep app_claw's direct dependency
@@ -336,6 +336,14 @@ menu "App Claw Config"
             help
                 Enable the magnetometer Lua module and keep app_claw's direct
                 dependency on lua_module_magnetometer when Lua capability is enabled.
+
+        config APP_CLAW_LUA_MODULE_SCI
+            bool "Enable DFRobot SCI Lua module"
+            default n
+            help
+                Enable the DFRobot RP2040 SCI Acquisition Module Lua module and
+                keep app_claw's direct dependency on lua_module_sci when Lua
+                capability is enabled.
 
         config APP_CLAW_LUA_MODULE_SSD1306
             bool "Enable SSD1306 Lua module"
