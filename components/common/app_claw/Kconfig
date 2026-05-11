@@ -317,7 +317,7 @@ menu "App Claw Config"
 
         config APP_CLAW_LUA_MODULE_LCD_TOUCH
             bool "Enable LCD touch Lua module"
-            default y if ESP_BOARD_DEV_LCD_TOUCH_I2C_SUPPORT
+            default y if ESP_BOARD_DEV_LCD_TOUCH_SUPPORT && ESP_BOARD_DEV_LCD_TOUCH_SUB_I2C_SUPPORT
             default n
             help
                 Enable the LCD touch Lua module and keep app_claw's direct dependency
