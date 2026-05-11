@@ -61,12 +61,7 @@ esp_err_t cap_lua_stop_all_jobs(const char *exclusive_filter,
                                 char *output,
                                 size_t output_size);
 
-extern const claw_core_context_provider_t cap_lua_async_jobs_provider;
-
 size_t cap_lua_get_active_async_job_count(void);
-
-void cap_lua_honesty_observe_completion(const claw_core_completion_summary_t *summary,
-                                        void *user_ctx);
 
 #ifdef __cplusplus
 }

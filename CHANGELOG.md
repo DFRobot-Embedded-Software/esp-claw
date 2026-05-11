@@ -6,6 +6,14 @@
 
 * LLM HTTP transport (`claw_llm_http_post_json`): copy and sanitize JSON request bodies so invalid UTF-8 sequences are replaced before POST, avoiding stack/client issues on malformed input. (https://github.com/espressif/esp-claw/pull/58, Thanks @yuzheyi.)
 
+### Feature:
+
+* Stablized the system prompt:
+  * `activate_skill` now accepts one `skill_id` per call and returns the full Skill markdown document in a `<skill_content>` tool result.
+  * Removed automatic active Skill document prompt injection and the `deactivate_skill` flow.
+  * Removed time context and part of session context from system prompt to keep it stable.
+  * Removed lua async job infomation from system prompt.
+
 ## 2026-05-08
 
 ### Refactor:

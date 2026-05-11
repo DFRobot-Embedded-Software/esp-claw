@@ -188,7 +188,7 @@ running -> stopped
 
 ## 与 Skill 的协同
 
-`cap_lua` Skill 文档会指导模型在停用 Skill 前先检查并停止仍在运行的 Lua 异步任务。运行时也会通过 `cap_lua_async_jobs_provider` 把当前异步任务摘要注入上下文，帮助模型避免遗留长期任务。
+`cap_lua` Skill 文档会指导模型在停止、替换或停用长期任务前，先用 `lua_list_async_jobs` / `lua_get_async_job` 按需检查仍在运行的 Lua 异步任务。
 
 <Aside type="tip">
   **推荐工作流：** 对于控制外设的脚本（如持续动画），使用 `lua_run_script_async` 提交，LLM 可以立即告知用户「已启动」，随后用 `lua_get_async_job` 确认完成状态，而不会因等待脚本执行而阻塞 Agent 循环。
