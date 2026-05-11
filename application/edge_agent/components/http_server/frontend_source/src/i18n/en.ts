@@ -69,6 +69,9 @@ export const en = {
   apValidationNameRequired: 'AP Name is required.',
   apValidationPasswordLength:
     'AP password must be empty or at least 8 characters long.',
+  apBehavior: 'AP Behavior',
+  apBehaviorKeep: 'Keep On',
+  apBehaviorCloseOnSta: 'Turn Off After Wi-Fi Connects',
 
   sectionStatusNetwork: 'Network',
   sectionStatusStorage: 'Storage',

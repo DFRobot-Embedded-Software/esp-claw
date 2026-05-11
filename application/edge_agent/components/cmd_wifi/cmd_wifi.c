@@ -146,6 +146,7 @@ static int cmd_wifi_apply_loaded_config(const app_config_t *config, const char *
         .sta_password = config->wifi_password,
         .ap_ssid = config->ap_ssid[0] ? config->ap_ssid : NULL,
         .ap_password = config->ap_password[0] ? config->ap_password : NULL,
+        .ap_behavior = config->ap_behavior,
     });
 
     if (err != ESP_OK) {

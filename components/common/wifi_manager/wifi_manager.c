@@ -271,6 +271,15 @@ static void wifi_event_handler(void *arg,
         s_retry_count = 0;
         s_connected = true;
         s_mode = s_ap_active ? WIFI_MODE_APSTA_OK : s_mode;
+        if (s_config.ap_behavior && strcmp(s_config.ap_behavior, "close_on_sta") == 0 && s_ap_active) {
+            ESP_LOGI(TAG, "STA connected, closing AP per ap_behavior setting");
+            esp_err_t _ap_err = esp_wifi_set_mode(WIFI_MODE_STA);
+            if (_ap_err == ESP_OK) {
+                s_ap_active = false;
+            } else {
+                ESP_LOGW(TAG, "Failed to switch to STA-only mode: %s", esp_err_to_name(_ap_err));
+            }
+        }
         xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
         notify_state_changed(true);
     }

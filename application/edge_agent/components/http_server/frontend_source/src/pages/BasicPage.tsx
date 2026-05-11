@@ -6,7 +6,7 @@ import { appStatus } from '../state/config';
 import { TabShell } from '../components/layout/TabShell';
 import { PageHeader } from '../components/ui/PageHeader';
 import { CollapsibleConfigBlock, StaticConfigBlock } from '../components/ui/ConfigBlocks';
-import { TextInput } from '../components/ui/FormField';
+import { TextInput, SelectInput } from '../components/ui/FormField';
 import { SavePanel } from '../components/ui/SavePanel';
 import { Banner } from '../components/ui/Banner';
 import { RestartConfirmModal } from '../components/system/RestartConfirmModal';
@@ -17,6 +17,7 @@ type BasicForm = {
   wifi_password: string;
   ap_ssid: string;
   ap_password: string;
+  ap_behavior: string;
   time_timezone: string;
 };
 
@@ -29,6 +30,7 @@ export const BasicPage: Component<{ onRestartRequest: () => void }> = (props) =>
       wifi_password: config.wifi_password ?? '',
       ap_ssid: config.ap_ssid || (appStatus()?.ap_ssid ?? ''),
       ap_password: config.ap_password ?? '',
+      ap_behavior: config.ap_behavior ?? 'keep',
       time_timezone: config.time_timezone ?? '',
     }),
     fromForm: (form) => ({
@@ -36,6 +38,7 @@ export const BasicPage: Component<{ onRestartRequest: () => void }> = (props) =>
       wifi_password: form.wifi_password,
       ap_ssid: form.ap_ssid.trim(),
       ap_password: form.ap_password,
+      ap_behavior: form.ap_behavior,
       time_timezone: form.time_timezone.trim(),
     }),
   });
@@ -53,15 +56,7 @@ export const BasicPage: Component<{ onRestartRequest: () => void }> = (props) =>
   const handleSave = async () => {
     const wifiSsid = tab.form.wifi_ssid.trim();
     const wifiPassword = tab.form.wifi_password;
-    const apName = tab.form.ap_ssid.trim();
     const apPassword = tab.form.ap_password;
-
-    if (!apName) {
-      const message = t('apValidationNameRequired') as string;
-      setValidationError(message);
-      pushToast(message, 'error', 5000);
-      return;
-    }
 
     if (wifiPassword.length > 0 && wifiPassword.length < 8) {
       const message = t('wifiValidationPasswordLength') as string;
@@ -151,6 +146,14 @@ export const BasicPage: Component<{ onRestartRequest: () => void }> = (props) =>
               value={tab.form.ap_password}
               onInput={(event) => tab.setForm('ap_password', event.currentTarget.value)}
             />
+            <SelectInput
+              label={t('apBehavior')}
+              value={tab.form.ap_behavior}
+              onChange={(event) => tab.setForm('ap_behavior', event.currentTarget.value)}
+            >
+              <option value="keep">{t('apBehaviorKeep') as string}</option>
+              <option value="close_on_sta">{t('apBehaviorCloseOnSta') as string}</option>
+            </SelectInput>
           </div>
         </StaticConfigBlock>
         <CollapsibleConfigBlock title={t('sectionAdvanced') as string} defaultOpen={false}>

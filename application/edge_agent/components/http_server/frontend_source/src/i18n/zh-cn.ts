@@ -65,6 +65,9 @@ export const zhCn: Dict = {
   apPasswordHint: '留空则为开放热点。如设置密码，长度至少 8 个字符。',
   apValidationNameRequired: 'AP 名称不能为空。',
   apValidationPasswordLength: 'AP 密码需留空或至少 8 个字符。',
+  apBehavior: 'AP 行为',
+  apBehaviorKeep: '保持开启',
+  apBehaviorCloseOnSta: '连接 Wi-Fi 后关闭',
 
   sectionStatusNetwork: '网络信息',
   sectionStatusStorage: '储存信息',

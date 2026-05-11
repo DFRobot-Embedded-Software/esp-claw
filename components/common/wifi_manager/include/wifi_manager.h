@@ -24,6 +24,7 @@ typedef struct {
     const char *ap_ssid_prefix;
     const char *ap_ssid;
     const char *ap_password;
+    const char *ap_behavior;
     uint8_t ap_channel;
     uint8_t ap_max_conn;
     uint32_t max_retry;
