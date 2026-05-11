@@ -5,6 +5,4 @@ idf_component_register(
         "include"
     REQUIRES
         cap_lua
-    PRIV_REQUIRES
-        espressif__i2c_bus
 )
