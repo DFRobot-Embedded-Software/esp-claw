@@ -111,6 +111,7 @@ Rules:
 - Set `metadata.manage_mode` to `readonly` for source-file skills.
 - Reference bundled files in the skill body with `{CUR_SKILL_DIR}/...`.
 - Reference bundled scripts in the skill body with `{CUR_SKILL_DIR}/scripts/<name>.lua`.
+- Every skill that includes one or more Lua scripts must document how each script is invoked, including the exact `{CUR_SKILL_DIR}/scripts/...` path, args schema, sync or async execution mode, timeout policy, exclusive group if any, and output/error handling.
 - Do not reference source-tree paths or FATFS output paths directly.
 
 ## Create A Skill
@@ -118,7 +119,7 @@ Rules:
 Flow:
 
 1. Decide the user-facing behavior, title, description, capability groups, whether Lua is needed, and bundled file names.
-2. If Lua is needed, keep `skill_creator` as the workflow owner, activate `cap_lua` only for Lua path and runtime rules, then read `{CUR_SKILL_DIR}/references/write_lua.md` for authoring patterns.
+2. If Lua is needed, keep `skill_creator` as the workflow owner, activate `cap_lua` only for Lua path and runtime rules, then read `{CUR_SKILL_DIR}/references/write_lua.md` for authoring patterns and `{CUR_SKILL_DIR}/references/run_lua.md` for run-tool semantics.
 3. Check the target `skills/<skill_id>/` directory does not already exist unless the user explicitly asked to update or replace that skill.
 4. Write the complete `SKILL.md` and any optional bundled files into a valid source `skills/<skill_id>/` directory.
 5. Make semantic sections specific to the skill: trigger wording, prerequisites, `Recommended Flow`, args schema, and script behavior when Lua is used.
@@ -181,7 +182,7 @@ For a non-Lua skill, omit Lua-specific sections and include only the capability 
 
 ## Create A Lua File
 
-For reusable user-facing behavior, create or edit Lua only under the skill-owned `scripts/` directory and keep this skill as the workflow owner. Activate `cap_lua` together with or after this skill only to load Lua path rules, run-tool behavior, and async semantics, then read `{CUR_SKILL_DIR}/references/write_lua.md` for the Lua template, module documentation strategy, authoring rules, and quality rules.
+For reusable user-facing behavior, create or edit Lua only under the skill-owned `scripts/` directory and keep this skill as the workflow owner. Activate `cap_lua` together with or after this skill only to load Lua path rules, then read `{CUR_SKILL_DIR}/references/write_lua.md` for the Lua template, module documentation strategy, authoring rules, and quality rules. Read `{CUR_SKILL_DIR}/references/run_lua.md` when documenting how the skill invokes Lua, including sync or async execution, args, timeouts, names, exclusive groups, and output handling.
 
 Do not create bare Lua files for ambiguous "add a feature" requests. Bare Lua files are only appropriate for temporary experiments, tests, demos, debugging, existing script maintenance, or when the user explicitly asks for a standalone Lua file.
 
