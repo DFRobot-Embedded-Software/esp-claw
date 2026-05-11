@@ -74,6 +74,12 @@
     width: 100%;
   }
 
+  select {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+  }
+
   input:focus,
   select:focus,
   textarea:focus {

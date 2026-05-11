@@ -59,7 +59,7 @@ export const zhCn: Dict = {
   wifiValidationSsidRequired: 'Wi-Fi 名称不能为空。',
   wifiValidationPasswordLength: 'Wi-Fi 密码要么留空，要么至少 8 个字符。',
 
-  apName: 'AP 名称',
+  apName: 'AP 名称 (SSID)',
   apPassword: 'AP 密码',
   apNameHint: '当前：{ssid}。留空使用默认名称。修改后需重启生效。',
   apPasswordHint: '留空则为开放热点。如设置密码，长度至少 8 个字符。',

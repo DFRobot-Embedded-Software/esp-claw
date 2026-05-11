@@ -349,6 +349,7 @@ void app_main(void)
         .sta_password = s_config->wifi_password,
         .ap_ssid = s_config->ap_ssid[0] ? s_config->ap_ssid : NULL,
         .ap_password = s_config->ap_password[0] ? s_config->ap_password : NULL,
+        .ap_behavior = s_config->ap_behavior,
     });
     if (wifi_err != ESP_OK) {
         ESP_LOGE(TAG, "Wi-Fi start failed: %s", esp_err_to_name(wifi_err));
