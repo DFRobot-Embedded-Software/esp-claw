@@ -61,6 +61,9 @@
 #if CONFIG_APP_CLAW_LUA_MODULE_EVENT_PUBLISHER
 #include "lua_module_event_publisher.h"
 #endif
+#if CONFIG_APP_CLAW_LUA_MODULE_HTTP_SERVER
+#include "lua_module_http_server.h"
+#endif
 #if CONFIG_APP_CLAW_LUA_MODULE_IMU
 #include "lua_module_imu.h"
 #endif
@@ -338,6 +341,14 @@ static esp_err_t app_lua_register_event_publisher(const char *fatfs_base_path)
 }
 #endif
 
+#if CONFIG_APP_CLAW_LUA_MODULE_HTTP_SERVER
+static esp_err_t app_lua_register_http_server(const char *fatfs_base_path)
+{
+    (void)fatfs_base_path;
+    return lua_module_http_server_register();
+}
+#endif
+
 #if CONFIG_APP_CLAW_LUA_MODULE_IMU
 static esp_err_t app_lua_register_imu(const char *fatfs_base_path)
 {
@@ -465,6 +476,9 @@ static const app_lua_module_entry_t s_lua_module_entries[] = {
 #if CONFIG_APP_CLAW_LUA_MODULE_EVENT_PUBLISHER
     { "event_publisher", "Event Publisher", app_lua_register_event_publisher },
 #endif
+#if CONFIG_APP_CLAW_LUA_MODULE_HTTP_SERVER
+    { "http_server", "HTTP Server", app_lua_register_http_server },
+#endif
 #if CONFIG_APP_CLAW_LUA_MODULE_IMU
     { "imu", "IMU", app_lua_register_imu },
 #endif
@@ -544,6 +558,9 @@ static const app_lua_module_info_t s_lua_module_infos[] = {
 #endif
 #if CONFIG_APP_CLAW_LUA_MODULE_EVENT_PUBLISHER
     { "event_publisher", "Event Publisher" },
+#endif
+#if CONFIG_APP_CLAW_LUA_MODULE_HTTP_SERVER
+    { "http_server", "HTTP Server" },
 #endif
 #if CONFIG_APP_CLAW_LUA_MODULE_IMU
     { "imu", "IMU" },

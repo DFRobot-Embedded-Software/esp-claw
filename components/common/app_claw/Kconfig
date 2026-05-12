@@ -273,6 +273,13 @@ menu "App Claw Config"
                 Enable the event publisher Lua module and keep app_claw's direct
                 dependency on lua_module_event_publisher when Lua capability is enabled.
 
+        config APP_CLAW_LUA_MODULE_HTTP_SERVER
+            bool "Enable HTTP server Lua module"
+            default y
+            help
+                Enable the HTTP server Lua module and keep app_claw's direct
+                dependency on lua_module_http_server when Lua capability is enabled.
+
         config APP_CLAW_LUA_MODULE_FUEL_GAUGE
             bool "Enable Fuel Gauge Lua module"
             default n

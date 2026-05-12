@@ -145,6 +145,20 @@ static void cap_lua_timeout_hook(lua_State *L, lua_Debug *ar)
     }
 }
 
+bool cap_lua_runtime_stop_requested(lua_State *L)
+{
+    cap_lua_exec_ctx_t *ctx = NULL;
+
+    if (!L) {
+        return false;
+    }
+
+    lua_getglobal(L, "__cap_lua_exec_ctx");
+    ctx = (cap_lua_exec_ctx_t *)lua_touserdata(L, -1);
+    lua_pop(L, 1);
+    return ctx && ctx->stop_requested && *ctx->stop_requested;
+}
+
 static void cap_lua_load_registered_modules(lua_State *L)
 {
     size_t i;
