@@ -16,9 +16,9 @@
 #include "claw_cap.h"
 #include "claw_skill.h"
 #include "cap_skill_mgr.h"
+#include "esp_log.h"
 
-static const char *CAP_SKILL_ACTIVATE = "activate_skill";
-static const char *CAP_SKILL_DEACTIVATE = "deactivate_skill";
+static const char *TAG = "cap_skill_mgr";
 static const char *CAP_SKILL_LIST = "list_skill";
 static const char *CAP_SKILL_REGISTER = "register_skill";
 static const char *CAP_SKILL_UNREGISTER = "unregister_skill";
@@ -68,78 +68,6 @@ static esp_err_t cap_skill_sync_session_visible_groups(const char *session_id)
                                                   group_count);
     cap_skill_free_string_array(group_ids, group_count);
     return err;
-}
-
-static esp_err_t cap_skill_build_result(const char *action,
-                                        const char *session_id,
-                                        const char *skill_id,
-                                        cJSON *skill_ids,
-                                        bool all,
-                                        char *output,
-                                        size_t output_size)
-{
-    char **active_skill_ids = NULL;
-    size_t active_skill_count = 0;
-    cJSON *root = NULL;
-    cJSON *active = NULL;
-    cJSON *requested = NULL;
-    char *rendered = NULL;
-    esp_err_t err;
-    size_t i;
-
-    if (!action || !output || output_size == 0) {
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    err = claw_skill_load_active_skill_ids(session_id, &active_skill_ids, &active_skill_count);
-    if (err != ESP_OK && err != ESP_ERR_NOT_FOUND) {
-        return err;
-    }
-
-    root = cJSON_CreateObject();
-    active = cJSON_CreateArray();
-    if (!root || !active) {
-        cJSON_Delete(root);
-        cJSON_Delete(active);
-        cap_skill_free_string_array(active_skill_ids, active_skill_count);
-        return ESP_ERR_NO_MEM;
-    }
-
-    cJSON_AddStringToObject(root, "action", action);
-    cJSON_AddStringToObject(root, "session_id", session_id ? session_id : "");
-    if (skill_id) {
-        cJSON_AddStringToObject(root, "skill_id", skill_id);
-    }
-    if (skill_ids) {
-        requested = cJSON_Duplicate(skill_ids, true);
-        if (!requested) {
-            cJSON_Delete(root);
-            cap_skill_free_string_array(active_skill_ids, active_skill_count);
-            return ESP_ERR_NO_MEM;
-        }
-        cJSON_AddItemToObject(root, "skill_ids", requested);
-    }
-    if (all) {
-        cJSON_AddBoolToObject(root, "all", true);
-    }
-    cJSON_AddBoolToObject(root, "ok", true);
-    for (i = 0; i < active_skill_count; i++) {
-        cJSON_AddItemToArray(active, cJSON_CreateString(active_skill_ids[i]));
-    }
-    cJSON_AddItemToObject(root, "active_skill_ids", active);
-
-    rendered = cJSON_PrintUnformatted(root);
-    if (!rendered) {
-        cJSON_Delete(root);
-        cap_skill_free_string_array(active_skill_ids, active_skill_count);
-        return ESP_ERR_NO_MEM;
-    }
-
-    snprintf(output, output_size, "%s", rendered);
-    free(rendered);
-    cJSON_Delete(root);
-    cap_skill_free_string_array(active_skill_ids, active_skill_count);
-    return ESP_OK;
 }
 
 static void cap_skill_write_error(char *output,
@@ -439,79 +367,14 @@ static esp_err_t cap_skill_activate_execute(const char *input_json,
                                             size_t output_size)
 {
     cJSON *root = NULL;
-    cJSON *skill_ids_item = NULL;
-    cJSON *skill_item = NULL;
+    cJSON *skill_id_item = NULL;
+    char *doc_text = NULL;
     char activated_skill_id[64] = {0};
-    esp_err_t err;
-
-    if (!ctx || !ctx->session_id || !ctx->session_id[0] || !output || output_size == 0) {
-        return ESP_ERR_INVALID_STATE;
-    }
-
-    root = cJSON_Parse(input_json ? input_json : "{}");
-    if (!root) {
-        snprintf(output, output_size, "{\"ok\":false,\"error\":\"invalid input json\"}");
-        return ESP_ERR_INVALID_ARG;
-    }
-    skill_ids_item = cJSON_GetObjectItemCaseSensitive(root, "skill_ids");
-
-    if (!cJSON_IsArray(skill_ids_item) || cJSON_GetArraySize(skill_ids_item) <= 0) {
-        cJSON_Delete(root);
-        snprintf(output, output_size, "{\"ok\":false,\"error\":\"skill_ids is required\"}");
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    cJSON_ArrayForEach(skill_item, skill_ids_item) {
-        if (!cJSON_IsString(skill_item) || !skill_item->valuestring || !skill_item->valuestring[0]) {
-            cJSON_Delete(root);
-            snprintf(output, output_size, "{\"ok\":false,\"error\":\"skill_ids must contain non-empty strings\"}");
-            return ESP_ERR_INVALID_ARG;
-        }
-
-        snprintf(activated_skill_id, sizeof(activated_skill_id), "%s", skill_item->valuestring);
-        err = claw_skill_activate_for_session(ctx->session_id, activated_skill_id);
-        if (err != ESP_OK) {
-            cJSON_Delete(root);
-            snprintf(output,
-                     output_size,
-                     "{\"ok\":false,\"error\":\"failed to activate skill\",\"skill_id\":\"%s\"}",
-                     activated_skill_id);
-            return err;
-        }
-    }
-
-    err = cap_skill_sync_session_visible_groups(ctx->session_id);
-    if (err != ESP_OK) {
-        snprintf(output,
-                 output_size,
-                 "{\"ok\":false,\"error\":\"failed to sync capability visibility\",\"skill_id\":\"%s\"}",
-                 activated_skill_id);
-        cJSON_Delete(root);
-        return err;
-    }
-
-    err = cap_skill_build_result(CAP_SKILL_ACTIVATE,
-                                 ctx->session_id,
-                                 NULL,
-                                 skill_ids_item,
-                                 false,
-                                 output,
-                                 output_size);
-    cJSON_Delete(root);
-    return err;
-}
-
-static esp_err_t cap_skill_deactivate_execute(const char *input_json,
-                                              const claw_cap_call_context_t *ctx,
-                                              char *output,
-                                              size_t output_size)
-{
-    cJSON *root = NULL;
-    cJSON *skill_ids_item = NULL;
-    cJSON *all_item = NULL;
-    cJSON *skill_item = NULL;
-    char target_skill_id[64] = {0};
-    bool all_requested = false;
+    const char *prefix = "<skill_content name=\"";
+    const char *middle = "\">\n";
+    const char *suffix = "\n</skill_content>";
+    size_t content_len;
+    int written;
     esp_err_t err = ESP_OK;
 
     if (!ctx || !ctx->session_id || !ctx->session_id[0] || !output || output_size == 0) {
@@ -523,156 +386,69 @@ static esp_err_t cap_skill_deactivate_execute(const char *input_json,
         snprintf(output, output_size, "{\"ok\":false,\"error\":\"invalid input json\"}");
         return ESP_ERR_INVALID_ARG;
     }
-    skill_ids_item = cJSON_GetObjectItemCaseSensitive(root, "skill_ids");
-    all_item = cJSON_GetObjectItemCaseSensitive(root, "all");
-    all_requested = cJSON_IsBool(all_item) && cJSON_IsTrue(all_item);
+    skill_id_item = cJSON_GetObjectItemCaseSensitive(root, "skill_id");
 
-    if (cJSON_IsArray(skill_ids_item) && cJSON_GetArraySize(skill_ids_item) > 0) {
-        char guard_reason[256] = {0};
-
-        cJSON_ArrayForEach(skill_item, skill_ids_item) {
-            char current_skill_id[64] = {0};
-
-            if (!cJSON_IsString(skill_item) || !skill_item->valuestring || !skill_item->valuestring[0]) {
-                cJSON_Delete(root);
-                snprintf(output, output_size, "{\"ok\":false,\"error\":\"skill_ids must contain non-empty strings\"}");
-                return ESP_ERR_INVALID_ARG;
-            }
-            snprintf(current_skill_id, sizeof(current_skill_id), "%s", skill_item->valuestring);
-
-            err = claw_skill_check_deactivate_allowed(ctx->session_id,
-                                                      current_skill_id,
-                                                      guard_reason, sizeof(guard_reason));
-            if (err != ESP_OK) {
-                cJSON_Delete(root);
-                cJSON *resp = cJSON_CreateObject();
-                char *rendered = NULL;
-                if (resp) {
-                    cJSON_AddBoolToObject(resp, "ok", false);
-                    cJSON_AddStringToObject(resp, "error", "deactivate blocked by skill guard");
-                    cJSON_AddStringToObject(resp, "skill_id", current_skill_id);
-                    cJSON_AddStringToObject(resp, "reason", guard_reason);
-                    rendered = cJSON_PrintUnformatted(resp);
-                    cJSON_Delete(resp);
-                }
-                if (rendered) {
-                    snprintf(output, output_size, "%s", rendered);
-                    free(rendered);
-                } else {
-                    snprintf(output, output_size,
-                             "{\"ok\":false,\"error\":\"deactivate blocked\",\"skill_id\":\"%s\"}",
-                             current_skill_id);
-                }
-                return ESP_OK;
-            }
-        }
-
-        cJSON_ArrayForEach(skill_item, skill_ids_item) {
-            snprintf(target_skill_id, sizeof(target_skill_id), "%s", skill_item->valuestring);
-            err = claw_skill_deactivate_for_session(ctx->session_id, target_skill_id);
-            if (err != ESP_OK) {
-                cJSON_Delete(root);
-                snprintf(output,
-                         output_size,
-                         "{\"ok\":false,\"error\":\"failed to deactivate skill\",\"skill_id\":\"%s\"}",
-                         target_skill_id);
-                return err;
-            }
-        }
-    } else if (all_requested) {
-        char **active_ids = NULL;
-        size_t active_count = 0;
-        esp_err_t list_err = claw_skill_load_active_skill_ids(ctx->session_id,
-                                                              &active_ids,
-                                                              &active_count);
-        if (list_err != ESP_OK && list_err != ESP_ERR_NOT_FOUND) {
-            cJSON_Delete(root);
-            snprintf(output, output_size,
-                     "{\"ok\":false,\"error\":\"failed to enumerate active skills\","
-                     "\"all\":true,\"detail\":\"%s\"}",
-                     esp_err_to_name(list_err));
-            return list_err;
-        }
-
-        char first_block_id[64] = {0};
-        char first_block_reason[256] = {0};
-        for (size_t i = 0; i < active_count; i++) {
-            if (!active_ids[i] || !active_ids[i][0]) {
-                continue;
-            }
-            char r[256] = {0};
-            esp_err_t g = claw_skill_check_deactivate_allowed(ctx->session_id,
-                                                              active_ids[i],
-                                                              r, sizeof(r));
-            if (g != ESP_OK) {
-                snprintf(first_block_id, sizeof(first_block_id), "%s", active_ids[i]);
-                snprintf(first_block_reason, sizeof(first_block_reason), "%s", r);
-                break;
-            }
-        }
-        for (size_t i = 0; i < active_count; i++) {
-            free(active_ids[i]);
-        }
-        free(active_ids);
-
-        if (first_block_id[0]) {
-            cJSON_Delete(root);
-            cJSON *resp = cJSON_CreateObject();
-            char *rendered = NULL;
-            if (resp) {
-                cJSON_AddBoolToObject(resp, "ok", false);
-                cJSON_AddStringToObject(resp, "error", "deactivate blocked by skill guard");
-                cJSON_AddBoolToObject(resp, "all", true);
-                cJSON_AddStringToObject(resp, "blocked_by", first_block_id);
-                cJSON_AddStringToObject(resp, "reason", first_block_reason);
-                rendered = cJSON_PrintUnformatted(resp);
-                cJSON_Delete(resp);
-            }
-            if (rendered) {
-                snprintf(output, output_size, "%s", rendered);
-                free(rendered);
-            } else {
-                snprintf(output, output_size,
-                         "{\"ok\":false,\"error\":\"deactivate blocked\","
-                         "\"all\":true,\"blocked_by\":\"%s\"}",
-                         first_block_id);
-            }
-            return ESP_OK;
-        }
-        err = claw_skill_clear_active_for_session(ctx->session_id);
-        snprintf(target_skill_id, sizeof(target_skill_id), "%s", "all");
-    } else {
-        cJSON_Delete(root);
-        snprintf(output, output_size, "{\"ok\":false,\"error\":\"skill_ids or all=true is required\"}");
-        return ESP_ERR_INVALID_ARG;
+    if (!cJSON_IsString(skill_id_item) || !skill_id_item->valuestring || !skill_id_item->valuestring[0]) {
+        snprintf(output, output_size, "{\"ok\":false,\"error\":\"skill_id is required\"}");
+        err = ESP_ERR_INVALID_ARG;
+        goto cleanup;
+    }
+    if (strlen(skill_id_item->valuestring) >= sizeof(activated_skill_id)) {
+        cap_skill_write_error(output, output_size, "skill_id is too long", NULL);
+        err = ESP_ERR_INVALID_ARG;
+        goto cleanup;
     }
 
+    snprintf(activated_skill_id, sizeof(activated_skill_id), "%s", skill_id_item->valuestring);
+
+    doc_text = calloc(1, output_size);
+    if (!doc_text) {
+        cap_skill_write_error(output, output_size, "out of memory", NULL);
+        err = ESP_ERR_NO_MEM;
+        goto cleanup;
+    }
+
+    err = claw_skill_read_document(activated_skill_id, doc_text, output_size);
     if (err != ESP_OK) {
-        cJSON_Delete(root);
-        snprintf(output,
-                 output_size,
-                 "{\"ok\":false,\"error\":\"failed to deactivate skill\",\"skill_id\":\"%s\"}",
-                 target_skill_id);
-        return err;
+        ESP_LOGE(TAG, "failed to read skill doc %s: %s",
+                 activated_skill_id, esp_err_to_name(err));
+        cap_skill_write_error(output, output_size, "failed to read skill document", activated_skill_id);
+        goto cleanup;
     }
+
+    content_len = strlen(prefix) + strlen(activated_skill_id) + strlen(middle) +
+                  strlen(doc_text) + strlen(suffix);
+    if (content_len >= output_size) {
+        ESP_LOGE(TAG, "skill content result too large: %u >= %u",
+                 (unsigned)content_len, (unsigned)output_size);
+        cap_skill_write_error(output, output_size, "skill content result too large", activated_skill_id);
+        err = ESP_ERR_INVALID_SIZE;
+        goto cleanup;
+    }
+
+    err = claw_skill_activate_for_session(ctx->session_id, activated_skill_id);
+    if (err != ESP_OK) {
+        cap_skill_write_error(output, output_size, "failed to activate skill", activated_skill_id);
+        goto cleanup;
+    }
+
     err = cap_skill_sync_session_visible_groups(ctx->session_id);
     if (err != ESP_OK) {
-        cJSON_Delete(root);
-        snprintf(output,
-                 output_size,
-                 "{\"ok\":false,\"error\":\"failed to sync capability visibility\",\"skill_id\":\"%s\"}",
-                 target_skill_id);
-        return err;
+        cap_skill_write_error(output, output_size, "failed to sync capability visibility", activated_skill_id);
+        goto cleanup;
     }
 
-    err = cap_skill_build_result(CAP_SKILL_DEACTIVATE,
-                                 ctx->session_id,
-                                 NULL,
-                                 cJSON_IsArray(skill_ids_item) && cJSON_GetArraySize(skill_ids_item) > 0 ? skill_ids_item : NULL,
-                                 all_requested,
-                                 output,
-                                 output_size);
+    written = snprintf(output, output_size, "%s%s%s%s%s",
+                       prefix, activated_skill_id, middle, doc_text, suffix);
+    if (written < 0 || (size_t)written >= output_size) {
+        cap_skill_write_error(output, output_size, "skill content result too large", activated_skill_id);
+        err = ESP_ERR_INVALID_SIZE;
+        goto cleanup;
+    }
+
+cleanup:
     cJSON_Delete(root);
+    free(doc_text);
     return err;
 }
 
@@ -916,27 +692,14 @@ static const claw_cap_descriptor_t s_skill_descriptors[] = {
         .id = "activate_skill",
         .name = "activate_skill",
         .family = "skill",
-        .description = "Activate one or more skills from skill_ids and load their skill documentation into the prompt. "
-                       "When multiple skills are needed, activate all required skills in one call whenever possible.",
+        .description = "Activate a skill from skill_id and return its full Skill markdown document "
+                       "inside a <skill_content name=\"skill_id\"> block. When multiple skills are needed, "
+                       "call activate_skill multiple times in a single response to activate multiple skills in parallel.",
         .kind = CLAW_CAP_KIND_CALLABLE,
         .cap_flags = CLAW_CAP_FLAG_CALLABLE_BY_LLM,
         .input_schema_json =
-        "{\"type\":\"object\",\"properties\":{\"skill_ids\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"minItems\":1}},\"required\":[\"skill_ids\"]}",
+        "{\"type\":\"object\",\"properties\":{\"skill_id\":{\"type\":\"string\"}},\"required\":[\"skill_id\"]}",
         .execute = cap_skill_activate_execute,
-    },
-    {
-        .id = "deactivate_skill",
-        .name = "deactivate_skill",
-        .family = "skill",
-        .description = "Deactivate one or more skills from skill_ids, or use all=true to clear active skills and "
-                       "remove their skill documentation from the prompt. When multiple skills are needed, "
-                       "deactivate all required skills in one call whenever possible.",
-        .kind = CLAW_CAP_KIND_CALLABLE,
-        .cap_flags = CLAW_CAP_FLAG_CALLABLE_BY_LLM,
-        .input_schema_json =
-        "{\"type\":\"object\",\"properties\":{\"skill_ids\":{\"type\":\"array\","
-        "\"items\":{\"type\":\"string\"},\"minItems\":1},\"all\":{\"type\":\"boolean\"}}}",
-        .execute = cap_skill_deactivate_execute,
     },
 };
 

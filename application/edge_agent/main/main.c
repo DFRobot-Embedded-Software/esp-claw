@@ -119,6 +119,15 @@ static esp_err_t main_load_config(app_config_t *config)
 
 static esp_err_t main_save_config(const app_config_t *config)
 {
+    if (!config) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    esp_err_t err = app_config_validate_wifi(config, NULL);
+    if (err != ESP_OK) {
+        return err;
+    }
+
     return app_config_save(config);
 }
 
@@ -347,6 +356,9 @@ void app_main(void)
     esp_err_t wifi_err = wifi_manager_start(&(wifi_manager_config_t) {
         .sta_ssid = s_config->wifi_ssid,
         .sta_password = s_config->wifi_password,
+        .ap_ssid = s_config->ap_ssid[0] ? s_config->ap_ssid : NULL,
+        .ap_password = s_config->ap_password[0] ? s_config->ap_password : NULL,
+        .ap_behavior = s_config->ap_behavior,
     });
     if (wifi_err != ESP_OK) {
         ESP_LOGE(TAG, "Wi-Fi start failed: %s", esp_err_to_name(wifi_err));
@@ -371,11 +383,15 @@ void app_main(void)
 
         wifi_manager_status_t status = {0};
         wifi_manager_get_status(&status);
-        ESP_LOGW(TAG,
-                 "*** Provisioning portal: SSID=\"%s\" (open) IP=%s URL=http://%s/ ***",
-                 status.ap_ssid,
-                 status.ap_ip,
-                 status.ap_ip);
+        if (status.ap_active) {
+            const char *portal_auth = s_config->ap_password[0] ? "wpa2" : "open";
+            ESP_LOGW(TAG,
+                     "*** Provisioning portal: SSID=\"%s\" (auth=%s) IP=%s URL=http://%s/ ***",
+                     status.ap_ssid,
+                     portal_auth,
+                     status.ap_ip,
+                     status.ap_ip);
+        }
     }
 
     ESP_ERROR_CHECK(app_claw_init_storage_paths(s_claw_paths));

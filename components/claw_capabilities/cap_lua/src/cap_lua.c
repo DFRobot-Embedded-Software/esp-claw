@@ -1257,86 +1257,6 @@ esp_err_t cap_lua_stop_all_jobs(const char *exclusive_filter,
     return cap_lua_async_stop_all_jobs(exclusive_filter, wait_ms, output, output_size);
 }
 
-static esp_err_t cap_lua_async_jobs_collect(const claw_core_request_t *request,
-                                            claw_core_context_t *out_context,
-                                            void *user_ctx)
-{
-    cap_lua_async_job_snapshot_t snapshots[CAP_LUA_ASYNC_MAX_CONCURRENT];
-    size_t count;
-    char *content = NULL;
-    size_t cap = 1024;
-    size_t off = 0;
-    time_t now;
-
-    (void)request;
-    (void)user_ctx;
-
-    if (!out_context) {
-        return ESP_ERR_INVALID_ARG;
-    }
-    memset(out_context, 0, sizeof(*out_context));
-
-    count = cap_lua_async_collect_active_snapshots(snapshots,
-                                                   sizeof(snapshots) / sizeof(snapshots[0]));
-    if (count == 0) {
-        return ESP_ERR_NOT_FOUND;
-    }
-
-    content = calloc(1, cap);
-    if (!content) {
-        return ESP_ERR_NO_MEM;
-    }
-
-    now = time(NULL);
-    off += snprintf(content + off, cap - off,
-                    "Active Lua async jobs (%u, max %u):\n",
-                    (unsigned)count,
-                    (unsigned)CAP_LUA_ASYNC_MAX_CONCURRENT);
-    for (size_t i = 0; i < count && off < cap - 1; i++) {
-        long runtime_s = (long)(now - (snapshots[i].started_at ? snapshots[i].started_at
-                                                                : snapshots[i].created_at));
-        if (runtime_s < 0) {
-            runtime_s = 0;
-        }
-        const char *status_name = NULL;
-        switch (snapshots[i].status) {
-        case CAP_LUA_JOB_QUEUED:  status_name = "queued"; break;
-        case CAP_LUA_JOB_RUNNING: status_name = "running"; break;
-        default:                  status_name = "active"; break;
-        }
-        int written = snprintf(content + off, cap - off,
-                               "- id=%s name=%s exclusive=%s status=%s runtime=%lds path=%s\n",
-                               snapshots[i].job_id,
-                               snapshots[i].name[0] ? snapshots[i].name : "(unnamed)",
-                               snapshots[i].exclusive[0] ? snapshots[i].exclusive : "none",
-                               status_name,
-                               runtime_s,
-                               snapshots[i].path);
-        if (written < 0 || (size_t)written >= cap - off) {
-            break;
-        }
-        off += (size_t)written;
-    }
-
-    if (off < cap - 1) {
-        off += snprintf(content + off, cap - off,
-                        "Listing only; jobs keep running until you call lua_stop_async_job, "
-                        "lua_stop_all_async_jobs, or lua_run_script_async with replace:true. "
-                        "If those tools are not visible, activate the cap_lua skill first. "
-                        "Never claim a job is stopped/switched without calling one of these.\n");
-    }
-
-    out_context->kind = CLAW_CORE_CONTEXT_KIND_SYSTEM_PROMPT;
-    out_context->content = content;
-    return ESP_OK;
-}
-
-const claw_core_context_provider_t cap_lua_async_jobs_provider = {
-    .name = "Lua Async Jobs",
-    .collect = cap_lua_async_jobs_collect,
-    .user_ctx = NULL,
-};
-
 /* Case-insensitive substring search (the LLM's casing is not stable). */
 static bool cap_lua_text_contains_ci(const char *haystack, const char *needle)
 {
@@ -1354,52 +1274,6 @@ static bool cap_lua_text_contains_ci(const char *haystack, const char *needle)
         }
     }
     return false;
-}
-
-void cap_lua_honesty_observe_completion(const claw_core_completion_summary_t *summary,
-                                        void *user_ctx)
-{
-    (void)user_ctx;
-    if (!summary || !summary->final_text || !summary->final_text[0]) {
-        return;
-    }
-    /* Honesty check is meaningful only when the model could see active jobs. */
-    const char *providers = summary->context_providers_csv ? summary->context_providers_csv : "";
-    if (!strstr(providers, "Lua Async Jobs")) {
-        return;
-    }
-    const char *tools = summary->tool_calls_csv ? summary->tool_calls_csv : "";
-    if (strstr(tools, "lua_stop_async_job") ||
-        strstr(tools, "lua_stop_all_async_jobs") ||
-        strstr(tools, "lua_run_script_async")) {
-        return;
-    }
-    static const char *const claim_keywords[] = {
-        "已取消", "已停止", "已关闭", "已清除", "取消了", "停止了", "关掉了", "关闭了",
-        "stopped", "cancelled", "canceled", "cleared",
-    };
-    bool claims_stop = false;
-    for (size_t i = 0; i < sizeof(claim_keywords) / sizeof(claim_keywords[0]); i++) {
-        if (cap_lua_text_contains_ci(summary->final_text, claim_keywords[i])) {
-            claims_stop = true;
-            break;
-        }
-    }
-    if (!claims_stop) {
-        return;
-    }
-    /* Truncate the reply so the warning stays readable in the log. */
-    char snippet[96] = {0};
-    strlcpy(snippet, summary->final_text, sizeof(snippet));
-    ESP_LOGW(TAG,
-             "honesty: request=%" PRIu32
-             " reply claims stop/cancel but no lua_stop_* tool was called this turn"
-             " (providers=[%s] tools=[%s] reply=%.80s%s)",
-             summary->request_id,
-             providers,
-             tools[0] ? tools : "(none)",
-             snippet,
-             strlen(summary->final_text) > sizeof(snippet) - 1 ? "..." : "");
 }
 
 esp_err_t cap_lua_list_jobs(const char *status, char *output, size_t output_size)

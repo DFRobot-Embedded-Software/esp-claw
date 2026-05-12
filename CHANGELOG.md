@@ -1,10 +1,39 @@
 # ChangeLog
 
+## 2026-05-11
+
+### Feature:
+
+* Added Lua access to the SCI sensor for DFRobot-K10. (@rockets-cn, https://github.com/espressif/esp-claw/pull/32)
+* Added configurable AP name and password settings for Wi-Fi. (@Karasukaigan, https://github.com/espressif/esp-claw/pull/63) (Related to https://github.com/espressif/esp-claw/issues/41)
+* Used a more stable system prompt to improve cache hit rates. (ae_group/esp-claw!133)
+
+### Board:
+
+* Added movecall_cuican_esp32s3, movecall_moji_esp32s3, movecall_moji2_esp32c5. (@MoveCall, https://github.com/espressif/esp-claw/pull/50)
+* Added Waveshare ESP32-P4 NANO. (@yuzheyi, https://github.com/espressif/esp-claw/pull/59)
+* Added NologoTech Xingzhi-395. (@vaemc, https://github.com/espressif/esp-claw/pull/55)
+
+### Fix:
+
+* Improved patch version compatibility across different IDF versions. (ae_group/esp-claw!134)
+* Fixed UTF-8 sanitization in the LLM request body to prevent HTTP 400 errors. (@yuzheyi, https://github.com/espressif/esp-claw/pull/58)
+* Preserved thinking blocks and merged consecutive tool results to fix an Anthropic API compliance issue. (@zz6zz666, https://github.com/espressif/esp-claw/pull/40)
+* Fixed missing `Console Output` declarations in some development builds. (ae_group/esp-claw!132)
+
 ## 2026-05-09
 
 ### Fix:
 
 * LLM HTTP transport (`claw_llm_http_post_json`): copy and sanitize JSON request bodies so invalid UTF-8 sequences are replaced before POST, avoiding stack/client issues on malformed input. (https://github.com/espressif/esp-claw/pull/58, Thanks @yuzheyi.)
+
+### Feature:
+
+* Stablized the system prompt:
+  * `activate_skill` now accepts one `skill_id` per call and returns the full Skill markdown document in a `<skill_content>` tool result.
+  * Removed automatic active Skill document prompt injection and the `deactivate_skill` flow.
+  * Removed time context and part of session context from system prompt to keep it stable.
+  * Removed lua async job infomation from system prompt.
 
 ## 2026-05-08
 
