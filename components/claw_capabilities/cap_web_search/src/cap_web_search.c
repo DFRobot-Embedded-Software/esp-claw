@@ -19,12 +19,13 @@
 
 static const char *TAG = "cap_web_search";
 
-#define CAP_WEB_SEARCH_BUF_SIZE     (16 * 1024)
-#define CAP_WEB_SEARCH_RESULT_COUNT 5
+#define CAP_WEB_SEARCH_BUF_SIZE                (16 * 1024)
+#define CAP_WEB_SEARCH_RESULT_COUNT            5
 #define CAP_WEB_SEARCH_HTTP_TIMEOUT_MS_DEFAULT 15000
 #define CAP_WEB_SEARCH_HTTP_MAX_BODY_DEFAULT   (16 * 1024)
 #define CAP_WEB_SEARCH_HTTP_MAX_BODY_LIMIT     ((64 * 1024) - 1)
 #define CAP_WEB_SEARCH_HTTP_ALLOWLIST_MAX      320
+#define CAP_WEB_SEARCH_REDIRECT_URL_MAX        512
 
 typedef enum {
     CAP_WEB_SEARCH_PROVIDER_NONE = 0,
@@ -40,6 +41,10 @@ typedef struct {
     size_t max_len;
     /* True when response body exceeds max_len and was truncated. */
     bool truncated;
+    /* When true, HTTP_EVENT_REDIRECT validates the Location URL against the allowlist. */
+    bool check_redirect_allowlist;
+    /* Stores the most recently received Location header value for redirect validation. */
+    char redirect_location[CAP_WEB_SEARCH_REDIRECT_URL_MAX];
 } cap_web_search_buf_t;
 
 typedef struct {
@@ -50,6 +55,9 @@ typedef struct {
 } cap_web_search_state_t;
 
 static cap_web_search_state_t s_search = {0};
+
+static bool cap_web_search_extract_url_host(const char *url, char *host, size_t host_size);
+static bool cap_web_search_host_allowed(const char *host);
 
 static void cap_web_search_refresh_provider(void)
 {
@@ -65,46 +73,75 @@ static void cap_web_search_refresh_provider(void)
 static esp_err_t cap_web_search_http_event_handler(esp_http_client_event_t *event)
 {
     cap_web_search_buf_t *buf = NULL;
+    size_t append_len;
 
-    if (!event || event->event_id != HTTP_EVENT_ON_DATA || event->data_len <= 0) {
+    if (!event) {
         return ESP_OK;
     }
 
     buf = (cap_web_search_buf_t *)event->user_data;
-    if (!buf || !buf->data) {
-        return ESP_OK;
-    }
 
-    size_t append_len = (size_t)event->data_len;
-    if (buf->max_len > 0 && buf->len + append_len > buf->max_len) {
-        if (buf->len >= buf->max_len) {
+    switch (event->event_id) {
+    case HTTP_EVENT_ON_HEADER:
+        if (buf && buf->check_redirect_allowlist &&
+                event->header_key && event->header_value &&
+                strcasecmp(event->header_key, "Location") == 0) {
+            strlcpy(buf->redirect_location, event->header_value, sizeof(buf->redirect_location));
+        }
+        break;
+
+    case HTTP_EVENT_REDIRECT:
+        if (buf && buf->check_redirect_allowlist) {
+            char host[128] = {0};
+
+            if (!buf->redirect_location[0] ||
+                    !cap_web_search_extract_url_host(buf->redirect_location, host, sizeof(host)) ||
+                    !cap_web_search_host_allowed(host)) {
+                ESP_LOGW(TAG, "Redirect to '%s' blocked by allowlist", buf->redirect_location);
+                return ESP_FAIL;
+            }
+            ESP_LOGI(TAG, "Redirect to host '%s' allowed by allowlist", host);
+            buf->redirect_location[0] = '\0';
+            return esp_http_client_set_redirection(event->client);
+        }
+        break;
+
+    case HTTP_EVENT_ON_DATA:
+        if (!buf || !buf->data || event->data_len <= 0) {
+            break;
+        }
+        append_len = (size_t)event->data_len;
+        if (buf->max_len > 0 && buf->len + append_len > buf->max_len) {
+            if (buf->len >= buf->max_len) {
+                buf->truncated = true;
+                break;
+            }
+            append_len = buf->max_len - buf->len;
             buf->truncated = true;
-            return ESP_OK;
         }
-        append_len = buf->max_len - buf->len;
-        buf->truncated = true;
+        if (buf->len + append_len + 1 > buf->cap) {
+            size_t new_cap = buf->cap * 2;
+            char *new_data = NULL;
+
+            if (new_cap < buf->len + append_len + 1) {
+                new_cap = buf->len + append_len + 1;
+            }
+            new_data = realloc(buf->data, new_cap);
+            if (!new_data) {
+                return ESP_ERR_NO_MEM;
+            }
+            buf->data = new_data;
+            buf->cap = new_cap;
+        }
+        memcpy(buf->data + buf->len, event->data, append_len);
+        buf->len += append_len;
+        buf->data[buf->len] = '\0';
+        break;
+
+    default:
+        break;
     }
 
-    if (buf->len + append_len + 1 > buf->cap) {
-        size_t new_cap = buf->cap * 2;
-        char *new_data = NULL;
-
-        if (new_cap < buf->len + append_len + 1) {
-            new_cap = buf->len + append_len + 1;
-        }
-
-        new_data = realloc(buf->data, new_cap);
-        if (!new_data) {
-            return ESP_ERR_NO_MEM;
-        }
-
-        buf->data = new_data;
-        buf->cap = new_cap;
-    }
-
-    memcpy(buf->data + buf->len, event->data, append_len);
-    buf->len += append_len;
-    buf->data[buf->len] = '\0';
     return ESP_OK;
 }
 
@@ -232,8 +269,13 @@ static bool cap_web_search_host_matches_allowlist_token(const char *host, const 
     token_len = strlen(token);
 
     if (token_len >= 3 && token[0] == '*' && token[1] == '.') {
+        const char *base = token + 2;   /* "example.com" */
         const char *suffix = token + 1; /* ".example.com" */
         size_t suffix_len = token_len - 1;
+        /* *.example.com matches example.com itself as well as any subdomain. */
+        if (strcasecmp(host, base) == 0) {
+            return true;
+        }
         return host_len > suffix_len &&
                strcasecmp(host + host_len - suffix_len, suffix) == 0;
     }
@@ -731,6 +773,7 @@ static esp_err_t cap_web_search_http_request_execute(const char *input_json,
         return ESP_ERR_NO_MEM;
     }
     buf.max_len = (size_t)max_body_bytes;
+    buf.check_redirect_allowlist = true;
 
     config.url = url_item->valuestring;
     config.event_handler = cap_web_search_http_event_handler;
@@ -738,6 +781,7 @@ static esp_err_t cap_web_search_http_request_execute(const char *input_json,
     config.timeout_ms = timeout_ms;
     config.buffer_size = 4096;
     config.crt_bundle_attach = esp_crt_bundle_attach;
+    config.disable_auto_redirect = true;
 
     client = esp_http_client_init(&config);
     if (!client) {
