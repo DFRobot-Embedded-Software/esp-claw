@@ -558,10 +558,10 @@ static const app_capability_group_entry_t s_capability_group_entries[] = {
     { "cap_files", "Files", "Register files cap", true, app_cap_prepare_files, app_cap_register_files },
 #endif
 #if CONFIG_APP_CLAW_CAP_SCHEDULER
-    { "cap_scheduler", "Scheduler", "Register scheduler cap", false, NULL, app_cap_register_scheduler },
+    { "cap_scheduler", "Scheduler", "Register scheduler cap", true, NULL, app_cap_register_scheduler },
 #endif
 #if CONFIG_APP_CLAW_CAP_LUA
-    { "cap_lua", "Lua", "Register Lua cap", false, app_cap_prepare_lua, app_cap_register_lua },
+    { "cap_lua", "Lua", "Register Lua cap", true, app_cap_prepare_lua, app_cap_register_lua },
 #endif
 #if CONFIG_APP_CLAW_CAP_MCP_CLIENT
     { "cap_mcp_client", "MCP Client", "Register MCP client cap", false, NULL, app_cap_register_mcp_client },
@@ -582,13 +582,13 @@ static const app_capability_group_entry_t s_capability_group_entries[] = {
     { "cap_time", "Time", "Register time cap", false, NULL, app_cap_register_time },
 #endif
 #if CONFIG_APP_CLAW_CAP_LLM_INSPECT
-    { "cap_llm_inspect", "LLM Inspect", "Register LLM inspect cap", false, NULL, app_cap_register_llm_inspect },
+    { "cap_llm_inspect", "LLM Inspect", "Register LLM inspect cap", true, NULL, app_cap_register_llm_inspect },
 #endif
 #if CONFIG_APP_CLAW_CAP_WEB_SEARCH
-    { "cap_web_search", "Web Search", "Register web search cap", false, app_cap_prepare_web_search, app_cap_register_web_search },
+    { "cap_web_search", "Web Search", "Register web search cap", true, app_cap_prepare_web_search, app_cap_register_web_search },
 #endif
 #if CONFIG_APP_CLAW_CAP_ROUTER_MGR
-    { "cap_router_mgr", "Router Manager", "Register router manager cap", false, NULL, app_cap_register_router_mgr },
+    { "cap_router_mgr", "Router Manager", "Register router manager cap", true, NULL, app_cap_register_router_mgr },
 #endif
 #if CONFIG_APP_CLAW_CAP_SESSION_MGR
     { "cap_session_mgr", "Session Manager", "Register session manager cap", false, NULL, app_cap_register_session_mgr },
