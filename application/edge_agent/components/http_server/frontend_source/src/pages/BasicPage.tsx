@@ -28,7 +28,7 @@ export const BasicPage: Component<{ onRestartRequest: () => void }> = (props) =>
     toForm: (config: Partial<AppConfig>) => ({
       wifi_ssid: config.wifi_ssid ?? '',
       wifi_password: config.wifi_password ?? '',
-      ap_ssid: config.ap_ssid || (appStatus()?.ap_ssid ?? ''),
+      ap_ssid: config.ap_ssid ?? '',
       ap_password: config.ap_password ?? '',
       ap_behavior: config.ap_behavior ?? 'keep',
       time_timezone: config.time_timezone ?? '',
@@ -57,6 +57,13 @@ export const BasicPage: Component<{ onRestartRequest: () => void }> = (props) =>
     const wifiSsid = tab.form.wifi_ssid.trim();
     const wifiPassword = tab.form.wifi_password;
     const apPassword = tab.form.ap_password;
+
+    if (!wifiSsid) {
+      const message = t('wifiValidationSsidRequired') as string;
+      setValidationError(message);
+      pushToast(message, 'error', 5000);
+      return;
+    }
 
     if (wifiPassword.length > 0 && wifiPassword.length < 8) {
       const message = t('wifiValidationPasswordLength') as string;

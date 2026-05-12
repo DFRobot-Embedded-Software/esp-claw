@@ -168,6 +168,11 @@ static bool is_boolean_string(const char *value)
             strcmp(value, "0") == 0);
 }
 
+static esp_err_t validate_wifi_config_fields(const app_config_t *config, const char **message)
+{
+    return app_config_validate_wifi(config, message);
+}
+
 static esp_err_t emit_config(httpd_req_t *req,
                              const app_config_t *config,
                              const char *groups_csv,
@@ -345,6 +350,13 @@ static esp_err_t config_post_handler(httpd_req_t *req)
         free(config);
         return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
                                    "Request did not contain any recognised fields");
+    }
+
+    const char *wifi_config_error = NULL;
+    err = validate_wifi_config_fields(config, &wifi_config_error);
+    if (err != ESP_OK) {
+        free(config);
+        return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, wifi_config_error);
     }
 
     err = ctx->services.save_config(config);

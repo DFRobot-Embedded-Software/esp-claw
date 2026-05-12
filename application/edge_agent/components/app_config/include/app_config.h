@@ -57,6 +57,7 @@ esp_err_t app_config_init(void);
 void app_config_load_defaults(app_config_t *config);
 esp_err_t app_config_load(app_config_t *config);
 esp_err_t app_config_save(const app_config_t *config);
+esp_err_t app_config_validate_wifi(const app_config_t *config, const char **message);
 void app_config_to_claw(const app_config_t *config, app_claw_config_t *out);
 const char *app_config_get_timezone(const app_config_t *config);
 
