@@ -100,13 +100,21 @@ build_application_edge_agent:
         EXAMPLE_TARGET: esp32p4
         EXAMPLE_BOARD_BRAND: "espressif"
 
+      - EXAMPLE_BOARD: ["esp_vocat_board_v1_2", "esp_box_3"]
+        EXAMPLE_TARGET: esp32s3
+        EXAMPLE_BOARD_BRAND: "espressif"
+
+      - EXAMPLE_BOARD: esp_SensairShuttle
+        EXAMPLE_TARGET: esp32c5
+        EXAMPLE_BOARD_BRAND: "espressif"
+
       - EXAMPLE_BOARD: ["m5stack_sticks3", "m5stack_cores3"]
         EXAMPLE_TARGET: esp32s3
         EXAMPLE_BOARD_BRAND: "m5stack"
 
-      - EXAMPLE_BOARD: ["esp_vocat_board_v1_2", "esp_box_3"]
-        EXAMPLE_TARGET: esp32s3
-        EXAMPLE_BOARD_BRAND: "espressif"
+      - EXAMPLE_BOARD: m5stack_tab5
+        EXAMPLE_TARGET: esp32p4
+        EXAMPLE_BOARD_BRAND: "m5stack"
 
       - EXAMPLE_BOARD: dfrobot_k10
         EXAMPLE_TARGET: esp32s3
@@ -115,10 +123,6 @@ build_application_edge_agent:
       - EXAMPLE_BOARD: lilygo_t_display_s3
         EXAMPLE_TARGET: esp32s3
         EXAMPLE_BOARD_BRAND: "lilygo"
-
-      - EXAMPLE_BOARD: esp_SensairShuttle
-        EXAMPLE_TARGET: esp32c5
-        EXAMPLE_BOARD_BRAND: "espressif"
 
       - EXAMPLE_BOARD: xingzhi_395
         EXAMPLE_TARGET: esp32p4
