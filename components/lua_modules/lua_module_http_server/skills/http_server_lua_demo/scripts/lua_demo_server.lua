@@ -1,4 +1,5 @@
 local http = require("http_server")
+local json = require("json")
 
 local DEFAULT_APP_ID = "lua_demo"
 local DEFAULT_WEB_ROOT = "/fatfs/skills/http_server_lua_demo/assets"
@@ -16,14 +17,17 @@ local function safe_abs_path(value)
     return type(value) == "string" and value:sub(1, 1) == "/" and not value:find("%.%.", 1, true)
 end
 
-local function bool_from_body(body)
-    if type(body) ~= "string" then
+local function toggle_from_body(body)
+    if type(body) ~= "string" or body == "" then
         return false
     end
-    if body:find('"enabled"%s*:%s*true') then
-        return true
+
+    local ok, data = pcall(json.decode, body)
+    if not ok or type(data) ~= "table" then
+        return false
     end
-    return false
+
+    return data.enabled == true
 end
 
 local function run()
@@ -47,8 +51,11 @@ local function run()
     end)
 
     app:post("/toggle", function(req)
-        switch_enabled = bool_from_body(req.body)
-        print(string.format("[http_server_lua_demo] switch toggled: enabled=%s", tostring(switch_enabled)))
+        switch_enabled = toggle_from_body(req.body)
+        print("[http_server_lua_demo] " .. json.encode({
+            event = "switch_toggled",
+            enabled = switch_enabled,
+        }))
         return {
             json = {
                 ok = true,

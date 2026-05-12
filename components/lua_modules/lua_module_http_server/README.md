@@ -41,6 +41,25 @@ Run scripts that serve callbacks through `lua_run_script_async`, because
 
 `app_id` may contain only letters, digits, `_`, and `-`.
 
+## Static Page Rules
+
+Open static pages with the trailing slash, for example `/lua/panel/`.
+Without the trailing slash, browsers treat `/lua/panel` as a file path and
+resolve relative assets like `./app.js` as `/lua/app.js`, which is invalid
+because `app.js` would be parsed as the app id.
+
+For packaged skills with a fixed default `app_id`, prefer absolute asset URLs
+in HTML:
+
+```html
+<link rel="stylesheet" href="/lua/panel/style.css">
+<script src="/lua/panel/app.js"></script>
+```
+
+If a skill allows callers to change `app_id`, either keep the documented
+trailing-slash URL as the required entry point or update the HTML asset URLs to
+match the chosen app id.
+
 ## Packaged Skill Example
 
 The repository includes a ready-to-run skill example:
