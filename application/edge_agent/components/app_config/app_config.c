@@ -64,6 +64,9 @@ typedef struct {
 static const app_config_field_t s_fields[] = {
     APP_CONFIG_FIELD(wifi_ssid, "wifi_ssid", APP_WIFI_SSID),
     APP_CONFIG_FIELD(wifi_password, "wifi_password", APP_WIFI_PASSWORD),
+    APP_CONFIG_FIELD(ap_ssid, "ap_ssid", ""),
+    APP_CONFIG_FIELD(ap_password, "ap_password", ""),
+    APP_CONFIG_FIELD(ap_behavior, "ap_behavior", "keep"),
     APP_CONFIG_FIELD(llm_api_key, "llm_api_key", APP_DEFAULT_LLM_API_KEY),
     APP_CONFIG_FIELD(llm_backend_type, "llm_backend", APP_DEFAULT_LLM_BACKEND_TYPE),
     APP_CONFIG_FIELD(llm_model, "llm_model", APP_DEFAULT_LLM_MODEL),
@@ -182,6 +185,13 @@ static inline char *app_config_field_ptr(app_config_t *config, const app_config_
 static inline const char *app_config_field_cptr(const app_config_t *config, const app_config_field_t *field)
 {
     return (const char *)config + field->offset;
+}
+
+static bool app_config_ap_behavior_is_valid(const char *ap_behavior)
+{
+    return !ap_behavior || ap_behavior[0] == '\0' ||
+           strcmp(ap_behavior, "keep") == 0 ||
+           strcmp(ap_behavior, "close_on_sta") == 0;
 }
 
 static const app_config_legacy_llm_preset_t *app_config_find_legacy_llm_preset(const char *legacy_id)
@@ -458,6 +468,41 @@ esp_err_t app_config_save(const app_config_t *config)
     }
 
     return settings_store_commit();
+}
+
+esp_err_t app_config_validate_wifi(const app_config_t *config, const char **message)
+{
+    if (message) {
+        *message = NULL;
+    }
+    if (!config) {
+        if (message) {
+            *message = "Missing Wi-Fi configuration";
+        }
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (config->ap_password[0] != '\0') {
+        size_t ap_password_len = strlen(config->ap_password);
+        if (ap_password_len < 8 || ap_password_len > 63) {
+            if (message) {
+                *message = "ap_password must be empty or 8-63 characters";
+            }
+            return ESP_ERR_INVALID_ARG;
+        }
+    }
+    if (config->ap_ssid[0] != '\0' && strlen(config->ap_ssid) > 32) {
+        if (message) {
+            *message = "ap_ssid must be 1-32 characters";
+        }
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (!app_config_ap_behavior_is_valid(config->ap_behavior)) {
+        if (message) {
+            *message = "ap_behavior must be keep or close_on_sta";
+        }
+        return ESP_ERR_INVALID_ARG;
+    }
+    return ESP_OK;
 }
 
 void app_config_to_claw(const app_config_t *config, app_claw_config_t *out)
