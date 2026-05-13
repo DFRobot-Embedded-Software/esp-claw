@@ -26,6 +26,9 @@
 #if CONFIG_APP_CLAW_LUA_DRIVER_MCPWM
 #include "lua_driver_mcpwm.h"
 #endif
+#if CONFIG_APP_CLAW_LUA_DRIVER_PCNT
+#include "lua_driver_pcnt.h"
+#endif
 #if CONFIG_APP_CLAW_LUA_DRIVER_TOUCH
 #include "lua_driver_touch.h"
 #endif
@@ -254,6 +257,14 @@ static esp_err_t app_lua_register_mcpwm(const char *fatfs_base_path)
 }
 #endif
 
+#if CONFIG_APP_CLAW_LUA_DRIVER_PCNT
+static esp_err_t app_lua_register_pcnt(const char *fatfs_base_path)
+{
+    (void)fatfs_base_path;
+    return lua_driver_pcnt_register();
+}
+#endif
+
 #if CONFIG_APP_CLAW_LUA_DRIVER_TOUCH
 static esp_err_t app_lua_register_touch(const char *fatfs_base_path)
 {
@@ -453,6 +464,9 @@ static const app_lua_module_entry_t s_lua_module_entries[] = {
 #if CONFIG_APP_CLAW_LUA_DRIVER_MCPWM
     { "mcpwm", "MCPWM", app_lua_register_mcpwm },
 #endif
+#if CONFIG_APP_CLAW_LUA_DRIVER_PCNT
+    { "pcnt", "PCNT", app_lua_register_pcnt },
+#endif
 #if CONFIG_APP_CLAW_LUA_DRIVER_TOUCH
     { "touch", "Touch", app_lua_register_touch },
 #endif
@@ -538,6 +552,9 @@ static const app_lua_module_info_t s_lua_module_infos[] = {
 #endif
 #if CONFIG_APP_CLAW_LUA_DRIVER_MCPWM
     { "mcpwm", "MCPWM" },
+#endif
+#if CONFIG_APP_CLAW_LUA_DRIVER_PCNT
+    { "pcnt", "PCNT" },
 #endif
 #if CONFIG_APP_CLAW_LUA_DRIVER_TOUCH
     { "touch", "Touch" },

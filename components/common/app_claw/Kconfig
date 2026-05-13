@@ -190,6 +190,15 @@ menu "App Claw Config"
                 Enable the MCPWM Lua driver and keep app_claw's direct dependency
                 on lua_driver_mcpwm when Lua capability is enabled.
 
+        config APP_CLAW_LUA_DRIVER_PCNT
+            bool "Enable PCNT Lua driver"
+            default y if SOC_PCNT_SUPPORTED
+            default n
+            help
+                Enable the PCNT Lua driver and keep app_claw's direct dependency
+                on lua_driver_pcnt when Lua capability is enabled.
+                Defaults to n on chips without PCNT hardware support.
+
         config APP_CLAW_LUA_DRIVER_TOUCH
             bool "Enable touch Lua driver"
             default y if SOC_TOUCH_SENSOR_SUPPORTED

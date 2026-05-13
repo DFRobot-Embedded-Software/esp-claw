@@ -127,6 +127,12 @@ dependencies:
       - if: $CONFIG{APP_CLAW_LUA_DRIVER_MCPWM} == True
     path: ../../lua_modules/lua_driver_mcpwm
 
+  lua_driver_pcnt:
+    rules:
+      - if: $CONFIG{APP_CLAW_CAP_LUA} == True
+      - if: $CONFIG{APP_CLAW_LUA_DRIVER_PCNT} == True
+    path: ../../lua_modules/lua_driver_pcnt
+
   lua_driver_touch:
     rules:
       - if: $CONFIG{APP_CLAW_CAP_LUA} == True
