@@ -56,7 +56,6 @@ typedef struct {
 #define APP_DEFAULT_WECHAT_ACCOUNT_ID        "default"
 #define APP_DEFAULT_SEARCH_BRAVE_KEY         ""
 #define APP_DEFAULT_SEARCH_TAVILY_KEY        ""
-#define APP_DEFAULT_SEARCH_HTTP_ALLOWLIST    ""
 #define APP_DEFAULT_ENABLED_CAP_GROUPS       ""
 #define APP_DEFAULT_LLM_VISIBLE_CAP_GROUPS   ""
 #define APP_DEFAULT_ENABLED_LUA_MODULES      ""
@@ -91,7 +90,7 @@ static const app_config_field_t s_fields[] = {
     APP_CONFIG_FIELD(wechat_account_id, "wechat_acct_id", APP_DEFAULT_WECHAT_ACCOUNT_ID),
     APP_CONFIG_FIELD(search_brave_key, "brave_key", APP_DEFAULT_SEARCH_BRAVE_KEY),
     APP_CONFIG_FIELD(search_tavily_key, "tavily_key", APP_DEFAULT_SEARCH_TAVILY_KEY),
-    APP_CONFIG_FIELD(search_http_allowlist, "http_allow_ls", APP_DEFAULT_SEARCH_HTTP_ALLOWLIST),
+    APP_CONFIG_FIELD(search_http_allowlist, "http_allow_ls", APP_SEARCH_HTTP_ALLOWLIST),
     APP_CONFIG_FIELD(enabled_cap_groups, "en_cap_groups", APP_DEFAULT_ENABLED_CAP_GROUPS),
     APP_CONFIG_FIELD(llm_visible_cap_groups, "vis_cap_groups", APP_DEFAULT_LLM_VISIBLE_CAP_GROUPS),
     APP_CONFIG_FIELD(enabled_lua_modules, "en_lua_mods", APP_DEFAULT_ENABLED_LUA_MODULES),
@@ -447,6 +446,28 @@ esp_err_t app_config_load(app_config_t *config)
                                                   app_config_field_ptr(config, &s_fields[i]),
                                                   s_fields[i].size,
                                                   s_fields[i].default_value);
+        if (err != ESP_OK) {
+            return err;
+        }
+    }
+
+    for (size_t i = 0; i < sizeof(s_fields) / sizeof(s_fields[0]); ++i) {
+        bool exists = false;
+
+        if (strcmp(s_fields[i].key, "http_allow_ls") != 0) {
+            continue;
+        }
+
+        esp_err_t err = settings_store_has_key(s_fields[i].key, &exists);
+        if (err != ESP_OK) {
+            return err;
+        }
+        if (exists) {
+            continue;
+        }
+
+        err = settings_store_set_string(s_fields[i].key,
+                                        app_config_field_ptr(config, &s_fields[i]));
         if (err != ESP_OK) {
             return err;
         }

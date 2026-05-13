@@ -268,6 +268,11 @@ static bool cap_web_search_host_matches_allowlist_token(const char *host, const 
     host_len = strlen(host);
     token_len = strlen(token);
 
+    // Only "*": matches any host
+    if (token_len == 1 && token[0] == '*') {
+        return true;
+    }
+
     if (token_len >= 3 && token[0] == '*' && token[1] == '.') {
         const char *base = token + 2;   /* "example.com" */
         const char *suffix = token + 1; /* ".example.com" */
