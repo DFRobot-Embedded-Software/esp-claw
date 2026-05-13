@@ -21,6 +21,7 @@ static const char *TAG = "claw_skill";
 static const char *SKILL_FRONTMATTER_DELIM = "---";
 static const char *SKILL_DOCUMENT_NAME = "SKILL.md";
 static const char *SKILL_MANAGE_MODE_READONLY = "readonly";
+static const char *SKILL_MANAGE_MODE_WEB = "web";
 static const char *SKILL_MANAGE_MODE_RUNTIME = "runtime";
 
 #define CLAW_SKILL_DEFAULT_MAX_FILES 64
@@ -436,6 +437,10 @@ static esp_err_t json_parse_manage_mode(cJSON *object, const char *key, claw_ski
         return ESP_ERR_INVALID_ARG;
     }
     if (strcmp(item->valuestring, SKILL_MANAGE_MODE_READONLY) == 0) {
+        *out_mode = CLAW_SKILL_MANAGE_MODE_READONLY;
+        return ESP_OK;
+    }
+    if (strcmp(item->valuestring, SKILL_MANAGE_MODE_WEB) == 0) {
         *out_mode = CLAW_SKILL_MANAGE_MODE_READONLY;
         return ESP_OK;
     }
