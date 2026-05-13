@@ -17,6 +17,7 @@ extern "C" {
 
 #define APP_WIFI_SSID             CONFIG_APP_WIFI_SSID
 #define APP_WIFI_PASSWORD         CONFIG_APP_WIFI_PASSWORD
+#define APP_SEARCH_HTTP_ALLOWLIST CONFIG_APP_SEARCH_HTTP_ALLOWLIST
 
 typedef struct {
     char wifi_ssid[APP_CONFIG_STR_LEN];
@@ -47,6 +48,7 @@ typedef struct {
     char wechat_account_id[32];
     char search_brave_key[APP_CONFIG_STR_LEN];
     char search_tavily_key[APP_CONFIG_STR_LEN];
+    char search_http_allowlist[APP_CONFIG_STR_LEN];
     char enabled_cap_groups[APP_CONFIG_STR_LEN];
     char llm_visible_cap_groups[APP_CONFIG_STR_LEN];
     char enabled_lua_modules[APP_CONFIG_STR_LEN];
