@@ -28,6 +28,7 @@ Builtin patterns:
 
 - Display scripts use `board_manager`, `display`, `delay`, `display.begin_frame`, `display.present`, `display.end_frame`, and `pcall(display.deinit)` cleanup.
 - Long display animations or games should usually run async with `exclusive: "display"` and a stable `name`.
+- Async scripts should print short progress lines; running job logs can be read later with `lua_get_async_job` or incrementally with `lua_tail_async_job`.
 - Hardware scripts open resources in `run()`, close them in `cleanup()`, then wrap execution in `xpcall(run, debug.traceback)`.
 
 ## Lua File Pattern
@@ -69,6 +70,7 @@ end
 - If a skill-local script needs `arg_schema`, use `require("arg_schema")`; inline only helpers that are not in the configured search paths.
 - Validate required values and unsafe strings before operating hardware, files, or network-backed capabilities.
 - Use `print(...)` for concise diagnostics because execution captures print output.
+- For async scripts, keep each `print(...)` line compact and useful. The async runner keeps a bounded per-job log buffer, so high-volume logs will overwrite older lines.
 - Keep user-facing text simple and predictable.
 - Do not assume extra Lua modules exist. Only `require` modules documented by `builtin_lua_modules` and the docs you read.
 

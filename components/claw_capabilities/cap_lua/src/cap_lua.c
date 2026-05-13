@@ -378,6 +378,8 @@ static esp_err_t cap_lua_run_script_execute(const char *input_json,
                                        args_json,
                                        timeout_ms,
                                        NULL,
+                                       NULL,
+                                       NULL,
                                        output,
                                        output_size);
     free(args_json);
@@ -406,10 +408,12 @@ static esp_err_t cap_lua_run_script_async_execute(const char *input_json,
     const char *exclusive = NULL;
     char resolved_path[192];
     cJSON *timeout_item = NULL;
+    cJSON *log_bytes_item = NULL;
     cJSON *replace_item = NULL;
     char *args_json = NULL;
     char request_path[192] = {0};
     uint32_t timeout_ms = CAP_LUA_ASYNC_DEFAULT_TIMEOUT_MS;
+    size_t log_bytes = CAP_LUA_ASYNC_LOG_DEFAULT_BYTES;
     cap_lua_async_job_t job = {0};
     char job_id[CAP_LUA_JOB_ID_LEN] = {0};
     char err_buf[256] = {0};
@@ -455,6 +459,22 @@ static esp_err_t cap_lua_run_script_async_execute(const char *input_json,
         timeout_ms = (uint32_t)timeout_item->valueint;
     }
 
+    log_bytes_item = cJSON_GetObjectItem(root, "log_bytes");
+    if (log_bytes_item) {
+        if (!cJSON_IsNumber(log_bytes_item) ||
+                log_bytes_item->valueint < CAP_LUA_ASYNC_LOG_MIN_BYTES ||
+                log_bytes_item->valueint > CAP_LUA_ASYNC_LOG_MAX_BYTES) {
+            cJSON_Delete(root);
+            snprintf(output,
+                     output_size,
+                     "Error: log_bytes must be an integer between %u and %u",
+                     (unsigned)CAP_LUA_ASYNC_LOG_MIN_BYTES,
+                     (unsigned)CAP_LUA_ASYNC_LOG_MAX_BYTES);
+            return ESP_ERR_INVALID_ARG;
+        }
+        log_bytes = (size_t)log_bytes_item->valueint;
+    }
+
     name = cJSON_GetStringValue(cJSON_GetObjectItem(root, "name"));
     exclusive = cJSON_GetStringValue(cJSON_GetObjectItem(root, "exclusive"));
     replace_item = cJSON_GetObjectItem(root, "replace");
@@ -489,6 +509,7 @@ static esp_err_t cap_lua_run_script_async_execute(const char *input_json,
 
     job.args_json = args_json;
     job.timeout_ms = timeout_ms;
+    job.log_bytes = log_bytes;
     job.replace = replace;
     job.created_at = time(NULL);
     err = cap_lua_async_submit(&job, job_id, sizeof(job_id), err_buf, sizeof(err_buf));
@@ -523,14 +544,17 @@ static esp_err_t cap_lua_run_script_async_execute(const char *input_json,
     }
 
     snprintf(output, output_size,
-             "Started Lua job %s (name=%s, exclusive=%s, timeout_ms=%u%s, status=%s) for %s",
+             "Started Lua job %s (name=%s, exclusive=%s, timeout_ms=%u%s, log_bytes=%u, status=%s) "
+             "for %s. Use lua_get_async_job or lua_tail_async_job with job_id=%s to read logs/results.",
              job_id,
              job.name[0] ? job.name : "(unnamed)",
              job.exclusive[0] ? job.exclusive : "none",
              (unsigned)timeout_ms,
              timeout_ms == 0 ? " [until cancelled]" : "",
+             (unsigned)log_bytes,
              status_label,
-             request_path);
+             request_path,
+             job_id);
     return ESP_OK;
 }
 
@@ -669,6 +693,69 @@ static esp_err_t cap_lua_get_async_job_execute(const char *input_json,
     return err;
 }
 
+static esp_err_t cap_lua_tail_async_job_execute(const char *input_json,
+                                                const claw_cap_call_context_t *ctx,
+                                                char *output,
+                                                size_t output_size)
+{
+    cJSON *root = NULL;
+    const char *job_id = NULL;
+    cJSON *since_item = NULL;
+    cJSON *max_item = NULL;
+    bool has_since_seq = false;
+    uint64_t since_seq = 0;
+    size_t max_bytes = CAP_LUA_ASYNC_LOG_TAIL_DEFAULT_BYTES;
+    esp_err_t err;
+
+    (void)ctx;
+
+    root = cJSON_Parse(input_json);
+    if (!root) {
+        snprintf(output, output_size, "Error: invalid JSON input");
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    job_id = cJSON_GetStringValue(cJSON_GetObjectItem(root, "job_id"));
+    if (!job_id || !job_id[0]) {
+        job_id = cJSON_GetStringValue(cJSON_GetObjectItem(root, "name"));
+    }
+    if (!job_id || !job_id[0]) {
+        cJSON_Delete(root);
+        snprintf(output, output_size, "Error: provide either 'job_id' or 'name'");
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    since_item = cJSON_GetObjectItem(root, "since_seq");
+    if (since_item) {
+        if (!cJSON_IsNumber(since_item) || since_item->valuedouble < 0) {
+            cJSON_Delete(root);
+            snprintf(output, output_size, "Error: since_seq must be a non-negative integer");
+            return ESP_ERR_INVALID_ARG;
+        }
+        has_since_seq = true;
+        since_seq = (uint64_t)since_item->valuedouble;
+    }
+
+    max_item = cJSON_GetObjectItem(root, "max_bytes");
+    if (max_item) {
+        if (!cJSON_IsNumber(max_item) || max_item->valueint <= 0) {
+            cJSON_Delete(root);
+            snprintf(output, output_size, "Error: max_bytes must be a positive integer");
+            return ESP_ERR_INVALID_ARG;
+        }
+        max_bytes = (size_t)max_item->valueint;
+    }
+
+    err = cap_lua_async_tail_job(job_id,
+                                 has_since_seq,
+                                 since_seq,
+                                 max_bytes,
+                                 output,
+                                 output_size);
+    cJSON_Delete(root);
+    return err;
+}
+
 static const claw_cap_descriptor_t s_lua_descriptors[] = {
     {
         .id = "lua_run_script",
@@ -690,10 +777,10 @@ static const claw_cap_descriptor_t s_lua_descriptors[] = {
         .name = "lua_run_script_async",
         .family = "automation",
         .description =
-        "Run a Lua script asynchronously, returns a job id. timeout_ms=0 "
-        "means run until cancelled (default). Use 'name' to label, 'exclusive' "
-        "for mutex groups (e.g. 'display'), 'replace':true to take over a "
-        "conflicting slot.",
+        "Run Lua async; returns job id. timeout_ms=0 runs until cancelled. "
+        "Use name/exclusive for conflicts; replace=true takes over. Read running, "
+        "final, or failed-job logs with lua_get_async_job or lua_tail_async_job "
+        "using returned job id.",
         .kind = CLAW_CAP_KIND_CALLABLE,
         .cap_flags = CLAW_CAP_FLAG_CALLABLE_BY_LLM,
         .input_schema_json =
@@ -701,7 +788,8 @@ static const claw_cap_descriptor_t s_lua_descriptors[] = {
         "\"args\":{\"type\":\"object\","
         "\"description\":\"Lua script arguments object keyed by parameter name.\","
         "\"additionalProperties\":true},"
-        "\"timeout_ms\":{\"type\":\"integer\",\"minimum\":0},\"name\":{\"type\":\"string\"},"
+        "\"timeout_ms\":{\"type\":\"integer\",\"minimum\":0},\"log_bytes\":{\"type\":\"integer\","
+        "\"minimum\":1024,\"maximum\":16384},\"name\":{\"type\":\"string\"},"
         "\"exclusive\":{\"type\":\"string\"},\"replace\":{\"type\":\"boolean\"}},\"required\":[\"path\"]}",
         .execute = cap_lua_run_script_async_execute,
     },
@@ -720,12 +808,27 @@ static const claw_cap_descriptor_t s_lua_descriptors[] = {
         .id = "lua_get_async_job",
         .name = "lua_get_async_job",
         .family = "automation",
-        .description = "Get the status and summary for a Lua async job by job_id or name.",
+        .description = "Get status, summary, and recent logs for a Lua async job by job_id or name.",
         .kind = CLAW_CAP_KIND_CALLABLE,
         .cap_flags = CLAW_CAP_FLAG_CALLABLE_BY_LLM,
         .input_schema_json =
         "{\"type\":\"object\",\"properties\":{\"job_id\":{\"type\":\"string\"},\"name\":{\"type\":\"string\"}}}",
         .execute = cap_lua_get_async_job_execute,
+    },
+    {
+        .id = "lua_tail_async_job",
+        .name = "lua_tail_async_job",
+        .family = "automation",
+        .description =
+        "Read incremental logs for a Lua async job by job_id or name. Pass since_seq from the "
+        "previous log_next_seq to continue reading only new log text.",
+        .kind = CLAW_CAP_KIND_CALLABLE,
+        .cap_flags = CLAW_CAP_FLAG_CALLABLE_BY_LLM,
+        .input_schema_json =
+        "{\"type\":\"object\",\"properties\":{\"job_id\":{\"type\":\"string\"},"
+        "\"name\":{\"type\":\"string\"},\"since_seq\":{\"type\":\"integer\",\"minimum\":0},"
+        "\"max_bytes\":{\"type\":\"integer\",\"minimum\":1}}}",
+        .execute = cap_lua_tail_async_job_execute,
     },
     {
         .id = "lua_stop_async_job",
