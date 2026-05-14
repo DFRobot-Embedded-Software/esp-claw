@@ -44,7 +44,6 @@ static bool s_builtin_modules_registered;
 static bool s_module_registration_locked;
 
 static bool cap_lua_abs_dir_is_valid(const char *dir);
-static bool cap_lua_text_contains_ci(const char *haystack, const char *needle);
 
 static esp_err_t cap_lua_build_simple_request(const char *string_key,
                                               const char *string_value,
@@ -1007,25 +1006,6 @@ esp_err_t cap_lua_stop_all_jobs(const char *exclusive_filter,
                                 size_t output_size)
 {
     return cap_lua_async_stop_all_jobs(exclusive_filter, wait_ms, output, output_size);
-}
-
-/* Case-insensitive substring search (the LLM's casing is not stable). */
-static bool cap_lua_text_contains_ci(const char *haystack, const char *needle)
-{
-    if (!haystack || !needle || !needle[0]) {
-        return false;
-    }
-    size_t hlen = strlen(haystack);
-    size_t nlen = strlen(needle);
-    if (nlen > hlen) {
-        return false;
-    }
-    for (size_t i = 0; i + nlen <= hlen; i++) {
-        if (strncasecmp(haystack + i, needle, nlen) == 0) {
-            return true;
-        }
-    }
-    return false;
 }
 
 esp_err_t cap_lua_list_jobs(const char *status, char *output, size_t output_size)
