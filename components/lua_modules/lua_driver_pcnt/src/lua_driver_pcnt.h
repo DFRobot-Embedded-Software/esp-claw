@@ -6,12 +6,14 @@
 #pragma once
 
 #include "esp_err.h"
+#include "lua.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-esp_err_t lua_module_esp_heap_register(void);
+int luaopen_pcnt(lua_State *L);
+esp_err_t lua_driver_pcnt_register(void);
 
 #ifdef __cplusplus
 }

@@ -27,6 +27,8 @@ typedef struct {
     /* deadline_us == 0 means "no wall-clock deadline" (cancel-only mode). */
     int64_t deadline_us;
     volatile bool *stop_requested;
+    cap_lua_runtime_log_fn_t log_fn;
+    void *log_ctx;
 } cap_lua_exec_ctx_t;
 
 static void cap_lua_output_append(cap_lua_exec_ctx_t *ctx,
@@ -109,14 +111,23 @@ static int cap_lua_print_capture(lua_State *L)
 
         if (i > 1) {
             cap_lua_output_append(ctx, "\t", 1);
+            if (ctx && ctx->log_fn) {
+                ctx->log_fn(ctx->log_ctx, "\t", 1);
+            }
             fwrite("\t", sizeof(char), 1, stdout);
         }
         cap_lua_output_append(ctx, text, len);
+        if (ctx && ctx->log_fn) {
+            ctx->log_fn(ctx->log_ctx, text, len);
+        }
         fwrite(text, sizeof(char), len, stdout);
         lua_pop(L, 1);
     }
 
     cap_lua_output_append(ctx, "\n", 1);
+    if (ctx && ctx->log_fn) {
+        ctx->log_fn(ctx->log_ctx, "\n", 1);
+    }
     fwrite("\n", sizeof(char), 1, stdout);
     fflush(stdout);
     return 0;
@@ -143,6 +154,20 @@ static void cap_lua_timeout_hook(lua_State *L, lua_Debug *ar)
     if (ctx->deadline_us != 0 && esp_timer_get_time() > ctx->deadline_us) {
         luaL_error(L, "execution timed out");
     }
+}
+
+bool cap_lua_runtime_stop_requested(lua_State *L)
+{
+    cap_lua_exec_ctx_t *ctx = NULL;
+
+    if (!L) {
+        return false;
+    }
+
+    lua_getglobal(L, "__cap_lua_exec_ctx");
+    ctx = (cap_lua_exec_ctx_t *)lua_touserdata(L, -1);
+    lua_pop(L, 1);
+    return ctx && ctx->stop_requested && *ctx->stop_requested;
 }
 
 static void cap_lua_load_registered_modules(lua_State *L)
@@ -292,6 +317,8 @@ esp_err_t cap_lua_runtime_execute_file(const char *path,
                                        const char *args_json,
                                        uint32_t timeout_ms,
                                        volatile bool *stop_requested,
+                                       cap_lua_runtime_log_fn_t log_fn,
+                                       void *log_ctx,
                                        char *output,
                                        size_t output_size)
 {
@@ -304,6 +331,8 @@ esp_err_t cap_lua_runtime_execute_file(const char *path,
                        ? 0
                        : esp_timer_get_time() + ((int64_t)timeout_ms * 1000),
         .stop_requested = stop_requested,
+        .log_fn = log_fn,
+        .log_ctx = log_ctx,
     };
     int status;
 

@@ -5,7 +5,6 @@
  */
 #include "cap_lua.h"
 
-#include <dirent.h>
 #include <errno.h>
 #include <inttypes.h>
 #include <stdio.h>
@@ -35,7 +34,6 @@ typedef struct cap_lua_package_path_dir_node {
 } cap_lua_package_path_dir_node_t;
 
 char g_cap_lua_base_dir[128];
-static char s_cap_lua_skill_root_dir[128];
 static cap_lua_module_t s_modules[CAP_LUA_MAX_MODULES];
 static cap_lua_package_path_dir_node_t *s_package_path_dirs;
 static size_t s_package_path_dir_count;
@@ -46,7 +44,6 @@ static bool s_builtin_modules_registered;
 static bool s_module_registration_locked;
 
 static bool cap_lua_abs_dir_is_valid(const char *dir);
-static bool cap_lua_text_contains_ci(const char *haystack, const char *needle);
 
 static esp_err_t cap_lua_build_simple_request(const char *string_key,
                                               const char *string_value,
@@ -99,20 +96,6 @@ static esp_err_t cap_lua_build_simple_request(const char *string_key,
 const char *cap_lua_get_base_dir(void)
 {
     return g_cap_lua_base_dir;
-}
-
-esp_err_t cap_lua_set_skill_root_dir(const char *skill_root_dir)
-{
-    if (!cap_lua_abs_dir_is_valid(skill_root_dir)) {
-        ESP_LOGE(TAG, "set_skill_root_dir: bad dir=%s", skill_root_dir ? skill_root_dir : "(null)");
-        return ESP_ERR_INVALID_ARG;
-    }
-    if (strlcpy(s_cap_lua_skill_root_dir, skill_root_dir, sizeof(s_cap_lua_skill_root_dir)) >= sizeof(s_cap_lua_skill_root_dir)) {
-        ESP_LOGE(TAG, "set_skill_root_dir: dir too long");
-        s_cap_lua_skill_root_dir[0] = '\0';
-        return ESP_ERR_INVALID_SIZE;
-    }
-    return ESP_OK;
 }
 
 size_t cap_lua_get_package_path_dir_count(void)
@@ -216,14 +199,13 @@ bool cap_lua_path_is_valid(const char *path)
     return cap_lua_abs_lua_path_is_valid(path, g_cap_lua_base_dir);
 }
 
-static bool cap_lua_skill_script_path_is_valid(const char *path)
-{
-    return cap_lua_abs_lua_path_is_valid(path, s_cap_lua_skill_root_dir);
-}
-
 bool cap_lua_run_path_is_valid(const char *path)
 {
-    return cap_lua_path_is_valid(path) || cap_lua_skill_script_path_is_valid(path);
+    /* Run targets must be absolute .lua paths with no ".." segments. The script root is no
+     * longer enforced here so callers can launch scripts from any mount point (e.g. RAMFS). */
+    return path && path[0] == '/' &&
+           strstr(path, "..") == NULL &&
+           cap_lua_has_lua_suffix(path);
 }
 
 esp_err_t cap_lua_resolve_path(const char *path, char *resolved, size_t resolved_size)
@@ -257,23 +239,21 @@ esp_err_t cap_lua_resolve_path(const char *path, char *resolved, size_t resolved
 
 esp_err_t cap_lua_resolve_run_path(const char *path, char *resolved, size_t resolved_size)
 {
-    if (!path || !path[0]) {
-        ESP_LOGE(TAG, "resolve_run_path: empty path");
+    if (!path || !path[0] || !resolved || resolved_size == 0) {
+        ESP_LOGE(TAG, "resolve_run_path: invalid arg");
         return ESP_ERR_INVALID_ARG;
     }
-    /* Accept absolute paths within the skill root directory. */
-    if (path[0] == '/') {
-        if (!cap_lua_skill_script_path_is_valid(path)) {
-            ESP_LOGE(TAG, "resolve_run_path: absolute path outside skill root: %s", path);
-            return ESP_ERR_INVALID_ARG;
-        }
-        if (strlcpy(resolved, path, resolved_size) >= resolved_size) {
-            ESP_LOGE(TAG, "resolve_run_path: path too long");
-            return ESP_ERR_INVALID_SIZE;
-        }
-        return ESP_OK;
+    /* Run tools only accept absolute .lua paths; the script's mount point is unrestricted so a
+     * caller can run a script from /fatfs/scripts, /fatfs/skills, /fatfs/temp (RAMFS), etc. */
+    if (!cap_lua_run_path_is_valid(path)) {
+        ESP_LOGE(TAG, "resolve_run_path: path must be an absolute .lua path: %s", path);
+        return ESP_ERR_INVALID_ARG;
     }
-    return cap_lua_resolve_path(path, resolved, resolved_size);
+    if (strlcpy(resolved, path, resolved_size) >= resolved_size) {
+        ESP_LOGE(TAG, "resolve_run_path: path too long");
+        return ESP_ERR_INVALID_SIZE;
+    }
+    return ESP_OK;
 }
 
 esp_err_t cap_lua_ensure_base_dir(void)
@@ -338,252 +318,6 @@ static esp_err_t cap_lua_group_start(void)
     return cap_lua_async_start();
 }
 
-static esp_err_t cap_lua_list_scripts_recursive(const char *dir_path,
-                                                const char *prefix,
-                                                const char *keyword,
-                                                char *output,
-                                                size_t output_size,
-                                                size_t *offset,
-                                                int *count)
-{
-    DIR *dir = NULL;
-    struct dirent *entry = NULL;
-    size_t base_len;
-
-    if (!dir_path || !output || !offset || !count) {
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    dir = opendir(dir_path);
-    if (!dir) {
-        return ESP_FAIL;
-    }
-    base_len = strlen(g_cap_lua_base_dir);
-
-    while ((entry = readdir(dir)) != NULL && *offset < output_size - 1) {
-        char full_path[384];
-        const char *relative_path = NULL;
-        struct stat st = {0};
-
-        if (entry->d_name[0] == '.') {
-            continue;
-        }
-
-        if (snprintf(full_path, sizeof(full_path), "%s/%s", dir_path, entry->d_name) >= sizeof(full_path)) {
-            continue;
-        }
-        if (stat(full_path, &st) != 0) {
-            continue;
-        }
-        if (S_ISDIR(st.st_mode)) {
-            esp_err_t err = cap_lua_list_scripts_recursive(full_path, prefix, keyword, output, output_size, offset, count);
-            if (err != ESP_OK) {
-                closedir(dir);
-                return err;
-            }
-            continue;
-        }
-        if (!cap_lua_path_is_valid(full_path)) {
-            continue;
-        }
-        relative_path = full_path + base_len + 1;
-        if (prefix && strncmp(relative_path, prefix, strlen(prefix)) != 0) {
-            continue;
-        }
-        if (keyword && !cap_lua_text_contains_ci(relative_path, keyword)) {
-            continue;
-        }
-
-        *offset += snprintf(output + *offset, output_size - *offset, "%s\n", relative_path);
-        (*count)++;
-    }
-
-    closedir(dir);
-    return ESP_OK;
-}
-
-static esp_err_t cap_lua_ensure_parent_dirs(const char *path)
-{
-    char dir_path[192];
-    char *slash = NULL;
-    char *cursor = NULL;
-    size_t base_len;
-
-    if (!path || !cap_lua_path_is_valid(path)) {
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    strlcpy(dir_path, path, sizeof(dir_path));
-    slash = strrchr(dir_path, '/');
-    if (!slash || slash == dir_path) {
-        return ESP_OK;
-    }
-    *slash = '\0';
-
-    base_len = strlen(g_cap_lua_base_dir);
-    cursor = dir_path + base_len + 1;
-    while ((slash = strchr(cursor, '/')) != NULL) {
-        *slash = '\0';
-        if (mkdir(dir_path, 0755) != 0 && errno != EEXIST) {
-            return ESP_FAIL;
-        }
-        *slash = '/';
-        cursor = slash + 1;
-    }
-
-    if (mkdir(dir_path, 0755) != 0 && errno != EEXIST) {
-        return ESP_FAIL;
-    }
-
-    return ESP_OK;
-}
-
-static esp_err_t cap_lua_list_scripts_execute(const char *input_json,
-                                              const claw_cap_call_context_t *ctx,
-                                              char *output,
-                                              size_t output_size)
-{
-    cJSON *root = NULL;
-    const char *prefix = NULL;
-    const char *keyword = NULL;
-    size_t offset = 0;
-    int count = 0;
-    esp_err_t err;
-
-    (void)ctx;
-
-    if (!output || output_size == 0) {
-        return ESP_ERR_INVALID_ARG;
-    }
-    output[0] = '\0';
-
-    root = cJSON_Parse(input_json);
-    if (root) {
-        cJSON *prefix_item = cJSON_GetObjectItem(root, "prefix");
-        cJSON *keyword_item = cJSON_GetObjectItem(root, "keyword");
-        if (cJSON_IsString(prefix_item) && prefix_item->valuestring[0]) {
-            prefix = prefix_item->valuestring;
-        }
-        if (cJSON_IsString(keyword_item) && keyword_item->valuestring[0]) {
-            keyword = keyword_item->valuestring;
-        }
-    }
-
-    if (prefix && !cap_lua_relative_path_is_valid(prefix)) {
-        cJSON_Delete(root);
-        ESP_LOGE(TAG, "list_scripts: bad prefix=%s", prefix);
-        snprintf(output, output_size, "Error: prefix must be a relative path");
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    err = cap_lua_list_scripts_recursive(g_cap_lua_base_dir, prefix, keyword, output, output_size, &offset, &count);
-    if (err != ESP_OK) {
-        cJSON_Delete(root);
-        ESP_LOGE(TAG, "list_scripts: scan failed");
-        snprintf(output, output_size, "Error: cannot list Lua scripts");
-        return ESP_FAIL;
-    }
-    cJSON_Delete(root);
-    if (count == 0) {
-        snprintf(output, output_size, "(no Lua scripts found)");
-    }
-    return ESP_OK;
-}
-
-static esp_err_t cap_lua_write_script_execute(const char *input_json,
-                                              const claw_cap_call_context_t *ctx,
-                                              char *output,
-                                              size_t output_size)
-{
-    cJSON *root = NULL;
-    const char *path = NULL;
-    const char *content = NULL;
-    char request_path[128] = {0};
-    char resolved_path[192];
-    cJSON *overwrite_item = NULL;
-    bool overwrite = true;
-    struct stat st = {0};
-    FILE *file = NULL;
-    size_t content_len = 0;
-
-    (void)ctx;
-
-    root = cJSON_Parse(input_json);
-    if (!root) {
-        ESP_LOGE(TAG, "write_script: invalid json");
-        snprintf(output, output_size, "Error: invalid JSON input");
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    path = cJSON_GetStringValue(cJSON_GetObjectItem(root, "path"));
-    content = cJSON_GetStringValue(cJSON_GetObjectItem(root, "content"));
-    overwrite_item = cJSON_GetObjectItem(root, "overwrite");
-    if (cJSON_IsBool(overwrite_item)) {
-        overwrite = cJSON_IsTrue(overwrite_item);
-    }
-    if (path && path[0]) {
-        strlcpy(request_path, path, sizeof(request_path));
-    }
-
-    if (cap_lua_resolve_path(path, resolved_path, sizeof(resolved_path)) != ESP_OK) {
-        cJSON_Delete(root);
-        ESP_LOGE(TAG, "write_script: bad path=%s", path ? path : "(null)");
-        snprintf(output, output_size, "Error: path must be a relative .lua path");
-        return ESP_ERR_INVALID_ARG;
-    }
-    if (!content) {
-        cJSON_Delete(root);
-        ESP_LOGE(TAG, "write_script: missing content");
-        snprintf(output, output_size, "Error: missing content");
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    content_len = strlen(content);
-    if (content_len > CAP_LUA_MAX_SCRIPT_SIZE) {
-        cJSON_Delete(root);
-        snprintf(output, output_size, "Error: script exceeds %d bytes", CAP_LUA_MAX_SCRIPT_SIZE);
-        return ESP_ERR_INVALID_SIZE;
-    }
-    if (!overwrite && stat(resolved_path, &st) == 0) {
-        cJSON_Delete(root);
-        snprintf(output, output_size, "Error: script already exists: %s", request_path);
-        return ESP_ERR_INVALID_STATE;
-    }
-
-    if (cap_lua_ensure_base_dir() != ESP_OK) {
-        cJSON_Delete(root);
-        ESP_LOGE(TAG, "write_script: storage prepare failed");
-        snprintf(output, output_size, "Error: failed to prepare Lua script storage");
-        return ESP_FAIL;
-    }
-    if (cap_lua_ensure_parent_dirs(resolved_path) != ESP_OK) {
-        cJSON_Delete(root);
-        ESP_LOGE(TAG, "write_script: mkdir failed path=%s", request_path);
-        snprintf(output, output_size, "Error: failed to prepare parent directory");
-        return ESP_FAIL;
-    }
-
-    file = fopen(resolved_path, "w");
-    if (!file) {
-        cJSON_Delete(root);
-        ESP_LOGE(TAG, "write_script: open failed path=%s errno=%d", request_path, errno);
-        snprintf(output, output_size, "Error: cannot open script for writing: %s", request_path);
-        return ESP_FAIL;
-    }
-    if (fwrite(content, 1, content_len, file) != content_len) {
-        fclose(file);
-        cJSON_Delete(root);
-        ESP_LOGE(TAG, "write_script: write failed path=%s", request_path);
-        snprintf(output, output_size, "Error: failed to write script: %s", request_path);
-        return ESP_FAIL;
-    }
-
-    fclose(file);
-    snprintf(output, output_size, "OK: wrote Lua script %s (%d bytes)", request_path, (int)content_len);
-    cJSON_Delete(root);
-    return ESP_OK;
-}
-
 static esp_err_t cap_lua_run_script_execute(const char *input_json,
                                             const claw_cap_call_context_t *ctx,
                                             char *output,
@@ -610,7 +344,7 @@ static esp_err_t cap_lua_run_script_execute(const char *input_json,
     if (cap_lua_resolve_run_path(path, resolved_path, sizeof(resolved_path)) != ESP_OK) {
         cJSON_Delete(root);
         ESP_LOGE(TAG, "run_script: bad path=%s", path ? path : "(null)");
-        snprintf(output, output_size, "Error: path must be a relative .lua path or skill:<id>/scripts/<file>.lua");
+        snprintf(output, output_size, "Error: path must be an absolute .lua path");
         return ESP_ERR_INVALID_ARG;
     }
 
@@ -643,6 +377,8 @@ static esp_err_t cap_lua_run_script_execute(const char *input_json,
                                        args_json,
                                        timeout_ms,
                                        NULL,
+                                       NULL,
+                                       NULL,
                                        output,
                                        output_size);
     free(args_json);
@@ -671,10 +407,12 @@ static esp_err_t cap_lua_run_script_async_execute(const char *input_json,
     const char *exclusive = NULL;
     char resolved_path[192];
     cJSON *timeout_item = NULL;
+    cJSON *log_bytes_item = NULL;
     cJSON *replace_item = NULL;
     char *args_json = NULL;
     char request_path[192] = {0};
     uint32_t timeout_ms = CAP_LUA_ASYNC_DEFAULT_TIMEOUT_MS;
+    size_t log_bytes = CAP_LUA_ASYNC_LOG_DEFAULT_BYTES;
     cap_lua_async_job_t job = {0};
     char job_id[CAP_LUA_JOB_ID_LEN] = {0};
     char err_buf[256] = {0};
@@ -694,7 +432,7 @@ static esp_err_t cap_lua_run_script_async_execute(const char *input_json,
     if (cap_lua_resolve_run_path(path, resolved_path, sizeof(resolved_path)) != ESP_OK) {
         cJSON_Delete(root);
         ESP_LOGE(TAG, "run_async: bad path=%s", path ? path : "(null)");
-        snprintf(output, output_size, "Error: path must be a relative .lua path or skill:<id>/scripts/<file>.lua");
+        snprintf(output, output_size, "Error: path must be an absolute .lua path");
         return ESP_ERR_INVALID_ARG;
     }
     strlcpy(request_path, path ? path : resolved_path, sizeof(request_path));
@@ -718,6 +456,22 @@ static esp_err_t cap_lua_run_script_async_execute(const char *input_json,
     }
     if (cJSON_IsNumber(timeout_item)) {
         timeout_ms = (uint32_t)timeout_item->valueint;
+    }
+
+    log_bytes_item = cJSON_GetObjectItem(root, "log_bytes");
+    if (log_bytes_item) {
+        if (!cJSON_IsNumber(log_bytes_item) ||
+                log_bytes_item->valueint < CAP_LUA_ASYNC_LOG_MIN_BYTES ||
+                log_bytes_item->valueint > CAP_LUA_ASYNC_LOG_MAX_BYTES) {
+            cJSON_Delete(root);
+            snprintf(output,
+                     output_size,
+                     "Error: log_bytes must be an integer between %u and %u",
+                     (unsigned)CAP_LUA_ASYNC_LOG_MIN_BYTES,
+                     (unsigned)CAP_LUA_ASYNC_LOG_MAX_BYTES);
+            return ESP_ERR_INVALID_ARG;
+        }
+        log_bytes = (size_t)log_bytes_item->valueint;
     }
 
     name = cJSON_GetStringValue(cJSON_GetObjectItem(root, "name"));
@@ -754,6 +508,7 @@ static esp_err_t cap_lua_run_script_async_execute(const char *input_json,
 
     job.args_json = args_json;
     job.timeout_ms = timeout_ms;
+    job.log_bytes = log_bytes;
     job.replace = replace;
     job.created_at = time(NULL);
     err = cap_lua_async_submit(&job, job_id, sizeof(job_id), err_buf, sizeof(err_buf));
@@ -788,14 +543,17 @@ static esp_err_t cap_lua_run_script_async_execute(const char *input_json,
     }
 
     snprintf(output, output_size,
-             "Started Lua job %s (name=%s, exclusive=%s, timeout_ms=%u%s, status=%s) for %s",
+             "Started Lua job %s (name=%s, exclusive=%s, timeout_ms=%u%s, log_bytes=%u, status=%s) "
+             "for %s. Use lua_get_async_job or lua_tail_async_job with job_id=%s to read logs/results.",
              job_id,
              job.name[0] ? job.name : "(unnamed)",
              job.exclusive[0] ? job.exclusive : "none",
              (unsigned)timeout_ms,
              timeout_ms == 0 ? " [until cancelled]" : "",
+             (unsigned)log_bytes,
              status_label,
-             request_path);
+             request_path,
+             job_id);
     return ESP_OK;
 }
 
@@ -934,34 +692,75 @@ static esp_err_t cap_lua_get_async_job_execute(const char *input_json,
     return err;
 }
 
+static esp_err_t cap_lua_tail_async_job_execute(const char *input_json,
+                                                const claw_cap_call_context_t *ctx,
+                                                char *output,
+                                                size_t output_size)
+{
+    cJSON *root = NULL;
+    const char *job_id = NULL;
+    cJSON *since_item = NULL;
+    cJSON *max_item = NULL;
+    bool has_since_seq = false;
+    uint64_t since_seq = 0;
+    size_t max_bytes = CAP_LUA_ASYNC_LOG_TAIL_DEFAULT_BYTES;
+    esp_err_t err;
+
+    (void)ctx;
+
+    root = cJSON_Parse(input_json);
+    if (!root) {
+        snprintf(output, output_size, "Error: invalid JSON input");
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    job_id = cJSON_GetStringValue(cJSON_GetObjectItem(root, "job_id"));
+    if (!job_id || !job_id[0]) {
+        job_id = cJSON_GetStringValue(cJSON_GetObjectItem(root, "name"));
+    }
+    if (!job_id || !job_id[0]) {
+        cJSON_Delete(root);
+        snprintf(output, output_size, "Error: provide either 'job_id' or 'name'");
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    since_item = cJSON_GetObjectItem(root, "since_seq");
+    if (since_item) {
+        if (!cJSON_IsNumber(since_item) || since_item->valuedouble < 0) {
+            cJSON_Delete(root);
+            snprintf(output, output_size, "Error: since_seq must be a non-negative integer");
+            return ESP_ERR_INVALID_ARG;
+        }
+        has_since_seq = true;
+        since_seq = (uint64_t)since_item->valuedouble;
+    }
+
+    max_item = cJSON_GetObjectItem(root, "max_bytes");
+    if (max_item) {
+        if (!cJSON_IsNumber(max_item) || max_item->valueint <= 0) {
+            cJSON_Delete(root);
+            snprintf(output, output_size, "Error: max_bytes must be a positive integer");
+            return ESP_ERR_INVALID_ARG;
+        }
+        max_bytes = (size_t)max_item->valueint;
+    }
+
+    err = cap_lua_async_tail_job(job_id,
+                                 has_since_seq,
+                                 since_seq,
+                                 max_bytes,
+                                 output,
+                                 output_size);
+    cJSON_Delete(root);
+    return err;
+}
+
 static const claw_cap_descriptor_t s_lua_descriptors[] = {
-    {
-        .id = "lua_list_scripts",
-        .name = "lua_list_scripts",
-        .family = "automation",
-        .description = "List Lua script relative paths, filtered by an optional relative-path prefix and case-insensitive relative-path keyword match.",
-        .kind = CLAW_CAP_KIND_CALLABLE,
-        .cap_flags = CLAW_CAP_FLAG_CALLABLE_BY_LLM,
-        .input_schema_json =
-        "{\"type\":\"object\",\"properties\":{\"prefix\":{\"type\":\"string\"},\"keyword\":{\"type\":\"string\"}}}",
-        .execute = cap_lua_list_scripts_execute,
-    },
-    {
-        .id = "lua_write_script",
-        .name = "lua_write_script",
-        .family = "automation",
-        .description = "Write a Lua script.",
-        .kind = CLAW_CAP_KIND_CALLABLE,
-        .cap_flags = CLAW_CAP_FLAG_CALLABLE_BY_LLM,
-        .input_schema_json =
-        "{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"content\":{\"type\":\"string\"},\"overwrite\":{\"type\":\"boolean\"}},\"required\":[\"path\",\"content\"]}",
-        .execute = cap_lua_write_script_execute,
-    },
     {
         .id = "lua_run_script",
         .name = "lua_run_script",
         .family = "automation",
-        .description = "Run a managed Lua script or skill-local Lua script synchronously with optional args and timeout.",
+        .description = "Run a Lua script synchronously with optional args and timeout.",
         .kind = CLAW_CAP_KIND_CALLABLE,
         .cap_flags = CLAW_CAP_FLAG_CALLABLE_BY_LLM,
         .input_schema_json =
@@ -977,10 +776,10 @@ static const claw_cap_descriptor_t s_lua_descriptors[] = {
         .name = "lua_run_script_async",
         .family = "automation",
         .description =
-        "Run a managed Lua script or skill-local Lua script asynchronously, returns a job id. timeout_ms=0 "
-        "means run until cancelled (default). Use 'name' to label, 'exclusive' "
-        "for mutex groups (e.g. 'display'), 'replace':true to take over a "
-        "conflicting slot.",
+        "Run Lua async; returns job id. timeout_ms=0 runs until cancelled. "
+        "Use name/exclusive for conflicts; replace=true takes over. Read running, "
+        "final, or failed-job logs with lua_get_async_job or lua_tail_async_job "
+        "using returned job id.",
         .kind = CLAW_CAP_KIND_CALLABLE,
         .cap_flags = CLAW_CAP_FLAG_CALLABLE_BY_LLM,
         .input_schema_json =
@@ -988,7 +787,8 @@ static const claw_cap_descriptor_t s_lua_descriptors[] = {
         "\"args\":{\"type\":\"object\","
         "\"description\":\"Lua script arguments object keyed by parameter name.\","
         "\"additionalProperties\":true},"
-        "\"timeout_ms\":{\"type\":\"integer\",\"minimum\":0},\"name\":{\"type\":\"string\"},"
+        "\"timeout_ms\":{\"type\":\"integer\",\"minimum\":0},\"log_bytes\":{\"type\":\"integer\","
+        "\"minimum\":1024,\"maximum\":16384},\"name\":{\"type\":\"string\"},"
         "\"exclusive\":{\"type\":\"string\"},\"replace\":{\"type\":\"boolean\"}},\"required\":[\"path\"]}",
         .execute = cap_lua_run_script_async_execute,
     },
@@ -1007,12 +807,27 @@ static const claw_cap_descriptor_t s_lua_descriptors[] = {
         .id = "lua_get_async_job",
         .name = "lua_get_async_job",
         .family = "automation",
-        .description = "Get the status and summary for a Lua async job by job_id or name.",
+        .description = "Get status, summary, and recent logs for a Lua async job by job_id or name.",
         .kind = CLAW_CAP_KIND_CALLABLE,
         .cap_flags = CLAW_CAP_FLAG_CALLABLE_BY_LLM,
         .input_schema_json =
         "{\"type\":\"object\",\"properties\":{\"job_id\":{\"type\":\"string\"},\"name\":{\"type\":\"string\"}}}",
         .execute = cap_lua_get_async_job_execute,
+    },
+    {
+        .id = "lua_tail_async_job",
+        .name = "lua_tail_async_job",
+        .family = "automation",
+        .description =
+        "Read incremental logs for a Lua async job by job_id or name. Pass since_seq from the "
+        "previous log_next_seq to continue reading only new log text.",
+        .kind = CLAW_CAP_KIND_CALLABLE,
+        .cap_flags = CLAW_CAP_FLAG_CALLABLE_BY_LLM,
+        .input_schema_json =
+        "{\"type\":\"object\",\"properties\":{\"job_id\":{\"type\":\"string\"},"
+        "\"name\":{\"type\":\"string\"},\"since_seq\":{\"type\":\"integer\",\"minimum\":0},"
+        "\"max_bytes\":{\"type\":\"integer\",\"minimum\":1}}}",
+        .execute = cap_lua_tail_async_job_execute,
     },
     {
         .id = "lua_stop_async_job",
@@ -1064,70 +879,6 @@ esp_err_t cap_lua_register_group(const char *base_dir)
 
     strlcpy(g_cap_lua_base_dir, base_dir, sizeof(g_cap_lua_base_dir));
     return claw_cap_register_group(&s_lua_group);
-}
-
-esp_err_t cap_lua_list_scripts(const char *prefix, const char *keyword, char *output, size_t output_size)
-{
-    char *input_json = NULL;
-    esp_err_t err;
-
-    err = cap_lua_build_simple_request("prefix",
-                                       prefix,
-                                       "keyword",
-                                       keyword,
-                                       false,
-                                       NULL,
-                                       false,
-                                       false,
-                                       NULL,
-                                       0,
-                                       &input_json);
-    if (err != ESP_OK) {
-        return err;
-    }
-
-    err = cap_lua_list_scripts_execute(input_json ? input_json : "{}",
-                                       NULL,
-                                       output,
-                                       output_size);
-    free(input_json);
-    return err;
-}
-
-esp_err_t cap_lua_write_script(const char *path,
-                               const char *content,
-                               bool overwrite,
-                               char *output,
-                               size_t output_size)
-{
-    cJSON *root = NULL;
-    char *input_json = NULL;
-    esp_err_t err = ESP_OK;
-
-    if (!path || !content) {
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    root = cJSON_CreateObject();
-    if (!root) {
-        return ESP_ERR_NO_MEM;
-    }
-    if (!cJSON_AddStringToObject(root, "path", path) ||
-            !cJSON_AddStringToObject(root, "content", content) ||
-            !cJSON_AddBoolToObject(root, "overwrite", overwrite)) {
-        cJSON_Delete(root);
-        return ESP_ERR_NO_MEM;
-    }
-
-    input_json = cJSON_PrintUnformatted(root);
-    cJSON_Delete(root);
-    if (!input_json) {
-        return ESP_ERR_NO_MEM;
-    }
-
-    err = cap_lua_write_script_execute(input_json, NULL, output, output_size);
-    free(input_json);
-    return err;
 }
 
 esp_err_t cap_lua_run_script(const char *path,
@@ -1255,25 +1006,6 @@ esp_err_t cap_lua_stop_all_jobs(const char *exclusive_filter,
                                 size_t output_size)
 {
     return cap_lua_async_stop_all_jobs(exclusive_filter, wait_ms, output, output_size);
-}
-
-/* Case-insensitive substring search (the LLM's casing is not stable). */
-static bool cap_lua_text_contains_ci(const char *haystack, const char *needle)
-{
-    if (!haystack || !needle || !needle[0]) {
-        return false;
-    }
-    size_t hlen = strlen(haystack);
-    size_t nlen = strlen(needle);
-    if (nlen > hlen) {
-        return false;
-    }
-    for (size_t i = 0; i + nlen <= hlen; i++) {
-        if (strncasecmp(haystack + i, needle, nlen) == 0) {
-            return true;
-        }
-    }
-    return false;
 }
 
 esp_err_t cap_lua_list_jobs(const char *status, char *output, size_t output_size)

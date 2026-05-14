@@ -22,7 +22,6 @@ static struct {
     struct arg_str *register_skill;
     struct arg_str *unregister_skill;
     struct arg_str *file;
-    struct arg_str *summary;
     struct arg_str *activate;
     struct arg_str *session;
     struct arg_end *end;
@@ -70,8 +69,7 @@ static int call_skill_cap(const char *cap_name, const char *input_json, const ch
 }
 
 static char *build_register_skill_json(const char *skill_id,
-                                       const char *file,
-                                       const char *summary)
+                                       const char *file)
 {
     cJSON *root = NULL;
     char *rendered = NULL;
@@ -83,7 +81,6 @@ static char *build_register_skill_json(const char *skill_id,
 
     cJSON_AddStringToObject(root, "skill_id", skill_id);
     cJSON_AddStringToObject(root, "file", file);
-    cJSON_AddStringToObject(root, "summary", summary);
     rendered = cJSON_PrintUnformatted(root);
     cJSON_Delete(root);
     return rendered;
@@ -137,14 +134,13 @@ static int skill_func(int argc, char **argv)
     }
 
     if (skill_args.register_skill->count) {
-        if (!skill_args.file->count || !skill_args.summary->count) {
-            printf("--register requires --file and --summary\n");
+        if (!skill_args.file->count) {
+            printf("--register requires --file\n");
             return 1;
         }
 
         input_json = build_register_skill_json(skill_args.register_skill->sval[0],
-                                               skill_args.file->sval[0],
-                                               skill_args.summary->sval[0]);
+                                               skill_args.file->sval[0]);
         if (!input_json) {
             printf("Out of memory\n");
             return 1;
@@ -202,10 +198,9 @@ void register_cap_skill(void)
 {
     skill_args.list = arg_lit0("l", "list", "List active skills for one session");
     skill_args.catalog = arg_lit0(NULL, "catalog", "Print the skills catalog JSON");
-    skill_args.register_skill = arg_str0("r", "register", "<skill_id>", "Create one runtime-managed skill markdown file");
-    skill_args.unregister_skill = arg_str0("u", "unregister", "<skill_id>", "Delete one runtime-managed skill markdown file");
-    skill_args.file = arg_str0("f", "file", "<skill_id>/SKILL.md", "Runtime skill markdown path to create under <storage_root>/skills");
-    skill_args.summary = arg_str0(NULL, "summary", "<summary>", "Skill summary written into the markdown metadata");
+    skill_args.register_skill = arg_str0("r", "register", "<skill_id>", "Register or refresh an existing source-file skill markdown file");
+    skill_args.unregister_skill = arg_str0("u", "unregister", "<skill_id>", "Delete one source-file skill markdown file");
+    skill_args.file = arg_str0("f", "file", "<skill_id>/SKILL.md", "Source-file skill markdown path under <storage_root>/skills");
     skill_args.activate = arg_str0("a", "activate", "<skill_id>", "Activate one skill");
     skill_args.session = arg_str0("s", "session", "<session_id>", "Session id, defaults to 'default'");
     skill_args.end = arg_end(16);
@@ -215,7 +210,7 @@ void register_cap_skill(void)
         .help = "Skill operations.\n"
         "Examples:\n"
         " skill --catalog\n"
-        " skill --register weather_v2 --file weather_v2/SKILL.md --summary \"Get forecast and alerts\"\n"
+        " skill --register weather_v2 --file weather_v2/SKILL.md\n"
         " skill --unregister weather_v2\n"
         " skill --list --session default\n"
         " skill --activate weather --session default\n",

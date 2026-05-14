@@ -127,6 +127,12 @@ dependencies:
       - if: $CONFIG{APP_CLAW_LUA_DRIVER_MCPWM} == True
     path: ../../lua_modules/lua_driver_mcpwm
 
+  lua_driver_pcnt:
+    rules:
+      - if: $CONFIG{APP_CLAW_CAP_LUA} == True
+      - if: $CONFIG{APP_CLAW_LUA_DRIVER_PCNT} == True
+    path: ../../lua_modules/lua_driver_pcnt
+
   lua_driver_touch:
     rules:
       - if: $CONFIG{APP_CLAW_CAP_LUA} == True
@@ -191,17 +197,23 @@ dependencies:
       - if: $CONFIG{APP_CLAW_LUA_MODULE_ENVIRONMENTAL_SENSOR} == True
     path: ../../lua_modules/lua_module_environmental_sensor
 
-  lua_module_esp_heap:
-    rules:
-      - if: $CONFIG{APP_CLAW_CAP_LUA} == True
-      - if: $CONFIG{APP_CLAW_LUA_MODULE_ESP_HEAP} == True
-    path: ../../lua_modules/lua_module_esp_heap
-
   lua_module_event_publisher:
     rules:
       - if: $CONFIG{APP_CLAW_CAP_LUA} == True
       - if: $CONFIG{APP_CLAW_LUA_MODULE_EVENT_PUBLISHER} == True
     path: ../../lua_modules/lua_module_event_publisher
+
+  lua_module_http_server:
+    rules:
+      - if: $CONFIG{APP_CLAW_CAP_LUA} == True
+      - if: $CONFIG{APP_CLAW_LUA_MODULE_HTTP_SERVER} == True
+    path: ../../lua_modules/lua_module_http_server
+
+  lua_module_json:
+    rules:
+      - if: $CONFIG{APP_CLAW_CAP_LUA} == True
+      - if: $CONFIG{APP_CLAW_LUA_MODULE_JSON} == True
+    path: ../../lua_modules/lua_module_json
 
   lua_module_fuel_gauge:
     rules:

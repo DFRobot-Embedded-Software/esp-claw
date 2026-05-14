@@ -190,6 +190,15 @@ menu "App Claw Config"
                 Enable the MCPWM Lua driver and keep app_claw's direct dependency
                 on lua_driver_mcpwm when Lua capability is enabled.
 
+        config APP_CLAW_LUA_DRIVER_PCNT
+            bool "Enable PCNT Lua driver"
+            default y if SOC_PCNT_SUPPORTED
+            default n
+            help
+                Enable the PCNT Lua driver and keep app_claw's direct dependency
+                on lua_driver_pcnt when Lua capability is enabled.
+                Defaults to n on chips without PCNT hardware support.
+
         config APP_CLAW_LUA_DRIVER_TOUCH
             bool "Enable touch Lua driver"
             default y if SOC_TOUCH_SENSOR_SUPPORTED
@@ -266,19 +275,26 @@ menu "App Claw Config"
                 Enable the environmental sensor Lua module and keep app_claw's direct
                 dependency on lua_module_environmental_sensor when Lua capability is enabled.
 
-        config APP_CLAW_LUA_MODULE_ESP_HEAP
-            bool "Enable esp_heap Lua module"
-            default y
-            help
-                Enable the esp_heap Lua module and keep app_claw's direct dependency
-                on lua_module_esp_heap when Lua capability is enabled.
-
         config APP_CLAW_LUA_MODULE_EVENT_PUBLISHER
             bool "Enable event publisher Lua module"
             default y
             help
                 Enable the event publisher Lua module and keep app_claw's direct
                 dependency on lua_module_event_publisher when Lua capability is enabled.
+
+        config APP_CLAW_LUA_MODULE_HTTP_SERVER
+            bool "Enable HTTP server Lua module"
+            default y
+            help
+                Enable the HTTP server Lua module and keep app_claw's direct
+                dependency on lua_module_http_server when Lua capability is enabled.
+
+        config APP_CLAW_LUA_MODULE_JSON
+            bool "Enable JSON Lua module"
+            default y
+            help
+                Enable the JSON Lua module and keep app_claw's direct dependency
+                on lua_module_json when Lua capability is enabled.
 
         config APP_CLAW_LUA_MODULE_FUEL_GAUGE
             bool "Enable Fuel Gauge Lua module"

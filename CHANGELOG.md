@@ -48,13 +48,29 @@
 
 * Online Flashing Tool: Supported flashing firmware with different console outputs
 
+### Feature:
+
+* Added the `take_picture` Lua module skill for camera-enabled boards, including a guarded JPEG capture script with filename/directory validation and saved-frame reporting.
+
+* Added `system.heap` APIs to `lua_module_system` for heap capability constants, heap statistics, task stack high-water marks, and current-task stack inspection.
+
+* Added Lua test scripts for web search and IM send capability calls.
+
+* Added Skill Creator guidance and reference material for authoring Lua-backed Skills, including script creation workflow, file tool usage, and runnable script conventions.
+
 ### Fix:
 
 * Added WebSocket heartbeat support to Web Chat for improved reliability. (https://github.com/espressif/esp-claw/issues/36)
 
+* Disabled default Lua and system capability registration in shared app capability wiring so applications only enable them explicitly.
+
 ### Change:
 
 * Merged Feishu, QQ, Telegram, WeChat, and IM attachment sources, Skills, and docs into the unified `cap_im_platform` component while keeping existing per-platform runtime group IDs and tool names.
+
+* Removed the standalone `lua_module_esp_heap` module and folded its heap introspection APIs into `lua_module_system` as `system.heap`.
+
+* Updated `cap_lua` script management to rely on file tools (`list_dir`, `read_file`, and `write_file`) for discovering and editing scripts instead of a dedicated Lua script listing tool.
 
 ### Refactor:
 

@@ -26,6 +26,9 @@
 #if CONFIG_APP_CLAW_LUA_DRIVER_MCPWM
 #include "lua_driver_mcpwm.h"
 #endif
+#if CONFIG_APP_CLAW_LUA_DRIVER_PCNT
+#include "lua_driver_pcnt.h"
+#endif
 #if CONFIG_APP_CLAW_LUA_DRIVER_TOUCH
 #include "lua_driver_touch.h"
 #endif
@@ -58,11 +61,14 @@
 #if CONFIG_APP_CLAW_LUA_MODULE_ENVIRONMENTAL_SENSOR
 #include "lua_module_environmental_sensor.h"
 #endif
-#if CONFIG_APP_CLAW_LUA_MODULE_ESP_HEAP
-#include "lua_module_esp_heap.h"
-#endif
 #if CONFIG_APP_CLAW_LUA_MODULE_EVENT_PUBLISHER
 #include "lua_module_event_publisher.h"
+#endif
+#if CONFIG_APP_CLAW_LUA_MODULE_HTTP_SERVER
+#include "lua_module_http_server.h"
+#endif
+#if CONFIG_APP_CLAW_LUA_MODULE_JSON
+#include "lua_module_json.h"
 #endif
 #if CONFIG_APP_CLAW_LUA_MODULE_IMU
 #include "lua_module_imu.h"
@@ -251,6 +257,14 @@ static esp_err_t app_lua_register_mcpwm(const char *fatfs_base_path)
 }
 #endif
 
+#if CONFIG_APP_CLAW_LUA_DRIVER_PCNT
+static esp_err_t app_lua_register_pcnt(const char *fatfs_base_path)
+{
+    (void)fatfs_base_path;
+    return lua_driver_pcnt_register();
+}
+#endif
+
 #if CONFIG_APP_CLAW_LUA_DRIVER_TOUCH
 static esp_err_t app_lua_register_touch(const char *fatfs_base_path)
 {
@@ -333,19 +347,27 @@ static esp_err_t app_lua_register_environmental_sensor(const char *fatfs_base_pa
 }
 #endif
 
-#if CONFIG_APP_CLAW_LUA_MODULE_ESP_HEAP
-static esp_err_t app_lua_register_esp_heap(const char *fatfs_base_path)
-{
-    (void)fatfs_base_path;
-    return lua_module_esp_heap_register();
-}
-#endif
-
 #if CONFIG_APP_CLAW_LUA_MODULE_EVENT_PUBLISHER
 static esp_err_t app_lua_register_event_publisher(const char *fatfs_base_path)
 {
     (void)fatfs_base_path;
     return lua_module_event_publisher_register();
+}
+#endif
+
+#if CONFIG_APP_CLAW_LUA_MODULE_HTTP_SERVER
+static esp_err_t app_lua_register_http_server(const char *fatfs_base_path)
+{
+    (void)fatfs_base_path;
+    return lua_module_http_server_register();
+}
+#endif
+
+#if CONFIG_APP_CLAW_LUA_MODULE_JSON
+static esp_err_t app_lua_register_json(const char *fatfs_base_path)
+{
+    (void)fatfs_base_path;
+    return lua_module_json_register();
 }
 #endif
 
@@ -442,6 +464,9 @@ static const app_lua_module_entry_t s_lua_module_entries[] = {
 #if CONFIG_APP_CLAW_LUA_DRIVER_MCPWM
     { "mcpwm", "MCPWM", app_lua_register_mcpwm },
 #endif
+#if CONFIG_APP_CLAW_LUA_DRIVER_PCNT
+    { "pcnt", "PCNT", app_lua_register_pcnt },
+#endif
 #if CONFIG_APP_CLAW_LUA_DRIVER_TOUCH
     { "touch", "Touch", app_lua_register_touch },
 #endif
@@ -473,11 +498,14 @@ static const app_lua_module_entry_t s_lua_module_entries[] = {
 #if CONFIG_APP_CLAW_LUA_MODULE_ENVIRONMENTAL_SENSOR
     { "environmental_sensor", "Environmental Sensor", app_lua_register_environmental_sensor },
 #endif
-#if CONFIG_APP_CLAW_LUA_MODULE_ESP_HEAP
-    { "esp_heap", "ESP Heap", app_lua_register_esp_heap },
-#endif
 #if CONFIG_APP_CLAW_LUA_MODULE_EVENT_PUBLISHER
     { "event_publisher", "Event Publisher", app_lua_register_event_publisher },
+#endif
+#if CONFIG_APP_CLAW_LUA_MODULE_HTTP_SERVER
+    { "http_server", "HTTP Server", app_lua_register_http_server },
+#endif
+#if CONFIG_APP_CLAW_LUA_MODULE_JSON
+    { "json", "JSON", app_lua_register_json },
 #endif
 #if CONFIG_APP_CLAW_LUA_MODULE_IMU
     { "imu", "IMU", app_lua_register_imu },
@@ -525,6 +553,9 @@ static const app_lua_module_info_t s_lua_module_infos[] = {
 #if CONFIG_APP_CLAW_LUA_DRIVER_MCPWM
     { "mcpwm", "MCPWM" },
 #endif
+#if CONFIG_APP_CLAW_LUA_DRIVER_PCNT
+    { "pcnt", "PCNT" },
+#endif
 #if CONFIG_APP_CLAW_LUA_DRIVER_TOUCH
     { "touch", "Touch" },
 #endif
@@ -556,11 +587,14 @@ static const app_lua_module_info_t s_lua_module_infos[] = {
 #if CONFIG_APP_CLAW_LUA_MODULE_ENVIRONMENTAL_SENSOR
     { "environmental_sensor", "Environmental Sensor" },
 #endif
-#if CONFIG_APP_CLAW_LUA_MODULE_ESP_HEAP
-    { "esp_heap", "ESP Heap" },
-#endif
 #if CONFIG_APP_CLAW_LUA_MODULE_EVENT_PUBLISHER
     { "event_publisher", "Event Publisher" },
+#endif
+#if CONFIG_APP_CLAW_LUA_MODULE_HTTP_SERVER
+    { "http_server", "HTTP Server" },
+#endif
+#if CONFIG_APP_CLAW_LUA_MODULE_JSON
+    { "json", "JSON" },
 #endif
 #if CONFIG_APP_CLAW_LUA_MODULE_IMU
     { "imu", "IMU" },
