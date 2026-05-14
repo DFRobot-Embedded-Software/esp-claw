@@ -132,6 +132,10 @@ build_application_edge_agent:
         EXAMPLE_TARGET: esp32p4
         EXAMPLE_BOARD_BRAND: "waveshare"
 
+      - EXAMPLE_BOARD: waveshare_ESP32_S3_RLCD_4_2
+        EXAMPLE_TARGET: esp32s3
+        EXAMPLE_BOARD_BRAND: "waveshare"
+
       - EXAMPLE_BOARD: ["movecall_cuican_esp32s3", "movecall_moji_esp32s3"]
         EXAMPLE_TARGET: esp32s3
         EXAMPLE_BOARD_BRAND: "movecall"
