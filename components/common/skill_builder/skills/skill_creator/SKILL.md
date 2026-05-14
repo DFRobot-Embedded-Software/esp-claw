@@ -1,7 +1,7 @@
 ---
 {
   "name": "skill_creator",
-  "description": "Create or update model-invoked skills, workflows, and Lua-backed capabilities.",
+  "description": "Create or update model-invoked functions/features/skills, workflows, and Lua-backed capabilities.",
   "metadata": {
     "cap_groups": [
       "cap_skill"
