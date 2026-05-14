@@ -54,7 +54,6 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-#include "../../managed_components/espressif__esp_board_manager/devices/dev_display_lcd/dev_display_lcd.h"
 #include "gen_board_device_custom.h"
 
 static const char *TAG = "waveshare_rlcd_4_2";
