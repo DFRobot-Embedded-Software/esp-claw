@@ -1,6 +1,7 @@
 ## IDF Component Manager Manifest File
 dependencies:
-  espressif/esp_video: "^2.0.1"
+  cap_lua:
+    path: ../../claw_capabilities/cap_lua
 
   lua_module_image:
     path: ../lua_module_image

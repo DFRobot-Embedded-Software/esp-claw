@@ -5,7 +5,6 @@ idf_component_register(
         "src"
     REQUIRES
         cap_lua
-        esp_timer
-        freertos
-        lua_module_image
+        esp_new_jpeg
+        heap
 )

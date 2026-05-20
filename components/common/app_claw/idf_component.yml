@@ -221,6 +221,12 @@ dependencies:
       - if: $CONFIG{APP_CLAW_LUA_MODULE_FUEL_GAUGE} == True
     path: ../../lua_modules/lua_module_fuel_gauge
 
+  lua_module_image:
+    rules:
+      - if: $CONFIG{APP_CLAW_CAP_LUA} == True
+      - if: $CONFIG{APP_CLAW_LUA_MODULE_IMAGE} == True
+    path: ../../lua_modules/lua_module_image
+
   lua_module_imu:
     rules:
       - if: $CONFIG{APP_CLAW_CAP_LUA} == True
@@ -294,3 +300,10 @@ dependencies:
       - if: $CONFIG{APP_CLAW_CAP_LUA} == True
       - if: $CONFIG{APP_CLAW_LUA_MODULE_SYSTEM} == True
     path: ../../lua_modules/lua_module_system
+
+  lua_module_vision:
+    rules:
+      - if: $CONFIG{APP_CLAW_CAP_LUA} == True
+      - if: $CONFIG{APP_CLAW_LUA_MODULE_VISION} == True
+      - if: $CONFIG{ESP_BOARD_DEV_CAMERA_SUPPORT} == True
+    path: ../../lua_modules/lua_module_vision

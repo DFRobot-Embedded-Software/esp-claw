@@ -6,12 +6,14 @@
 local arg_schema = require("arg_schema")
 local board_manager = require("board_manager")
 local camera = require("camera")
+local image = require("image")
 local storage = require("storage")
 
 -- 2. Constants
 local DEFAULT_FILENAME = "capture.jpg"
 local DEFAULT_DIR = ""
 local DEFAULT_TIMEOUT_MS = 3000
+local DEFAULT_SKIP_FRAMES = 3
 
 -- 3. Args
 local function raw_arg(name, default)
@@ -23,6 +25,7 @@ end
 
 local ARG_SCHEMA = {
   timeout_ms = arg_schema.int({ default = DEFAULT_TIMEOUT_MS, min = 0 }),
+  skip_frames = arg_schema.int({ default = DEFAULT_SKIP_FRAMES, min = 0 }),
 }
 
 local ctx = arg_schema.parse(args, ARG_SCHEMA)
@@ -120,15 +123,40 @@ local function run()
     tostring(info_or_err.pixel_format)
   ))
 
-  local capture = camera.capture(save_path, ctx.timeout_ms)
+  camera.flush()
+
+  -- Skip the first few frames after opening/flushing because some sensors produce overexposed warm-up frames.
+  for i = 1, ctx.skip_frames do
+    local warmup_frame <close> = camera.get_frame(ctx.timeout_ms)
+    local warmup_info = warmup_frame:info()
+    print(string.format(
+      "[take_picture] skipped warm-up frame %d/%d: %dx%d format=%s timestamp_us=%d",
+      i,
+      ctx.skip_frames,
+      warmup_info.width,
+      warmup_info.height,
+      tostring(warmup_info.pixel_format),
+      warmup_info.timestamp_us
+    ))
+  end
+
+  local frame <close> = camera.get_frame(ctx.timeout_ms)
+  local frame_info = frame:info()
+  image.save_file(save_path, frame)
+
+  local saved_info, stat_err = storage.stat(save_path)
+  if not saved_info then
+    error("storage.stat failed after save: " .. tostring(stat_err))
+  end
+
   print(string.format(
     "[take_picture] saved: path=%s bytes=%d frame=%dx%d format=%s timestamp_us=%d",
-    capture.path,
-    capture.bytes,
-    capture.width,
-    capture.height,
-    tostring(capture.pixel_format),
-    capture.timestamp_us
+    save_path,
+    saved_info.size,
+    frame_info.width,
+    frame_info.height,
+    tostring(frame_info.pixel_format),
+    frame_info.timestamp_us
   ))
 end
 
