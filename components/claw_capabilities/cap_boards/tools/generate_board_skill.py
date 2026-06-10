@@ -117,32 +117,6 @@ def format_io_list(entries: list[tuple[str, int]]) -> list[str]:
     return lines
 
 
-def format_device_io_lines(io: Any) -> list[str]:
-    if not isinstance(io, dict):
-        return format_io_list(collect_io_entries(io))
-
-    lines: list[str] = []
-    routed_via = io.get('routed_via')
-    expander_io = io.get('expander_io')
-    if isinstance(routed_via, str) and isinstance(expander_io, int):
-        expander_chip = io.get('expander_chip')
-        chip_pin = io.get('chip_pin')
-        chip_label = f'`{expander_chip}` ' if isinstance(expander_chip, str) else ''
-        pin_label = f' (chip pin `{chip_pin}`)' if isinstance(chip_pin, str) else ''
-        lines.append(
-            f'- `{routed_via}`: {chip_label}expander linear pin `{expander_io}`{pin_label}, '
-            f'not ESP32 GPIO'
-        )
-    if 'active_level' in io:
-        lines.append(f'- active_level -> `{io["active_level"]}`')
-
-    for line in format_io_list(collect_io_entries(io)):
-        if 'expander_io' in io and line.startswith('- `expander`'):
-            continue
-        lines.append(line)
-    return list(dict.fromkeys(lines))
-
-
 def load_devices(metadata: dict[str, Any]) -> list[dict[str, Any]]:
     raw_devices = metadata.get('devices', {})
     raw_peripherals = metadata.get('peripherals', {})
@@ -158,14 +132,14 @@ def load_devices(metadata: dict[str, Any]) -> list[dict[str, Any]]:
         if not isinstance(config, dict):
             config = {}
 
-        io_lines = format_device_io_lines(config.get('io', {}))
+        io_lines = format_io_list(collect_io_entries(config.get('io', {})))
         peripherals: list[dict[str, Any]] = []
         for peripheral_name in config.get('peripherals', []) or []:
             peripheral_config = raw_peripherals.get(peripheral_name, {})
             peripherals.append({
                 'name': str(peripheral_name),
-                'io_lines': format_device_io_lines(
-                    peripheral_config.get('io', {}) if isinstance(peripheral_config, dict) else {}
+                'io_lines': format_io_list(
+                    collect_io_entries(peripheral_config.get('io', {}) if isinstance(peripheral_config, dict) else {})
                 ),
             })
 
@@ -204,8 +178,6 @@ def render_markdown(metadata: dict[str, Any], devices: list[dict[str, Any]]) -> 
         '- Before operating any hardware, read this skill first.',
         '- Before assigning a GPIO, check whether it is already occupied below.',
         '- When writing Lua or board-specific code, use the listed device names instead of guessing hardware wiring.',
-        '- IO-expander buttons are **not** ESP32 GPIO buttons. Never call `button.new(N)` or scan ESP32 GPIOs for them. '
-        'Use `board_manager.get_gpio_expander_level("gpio_expander", pin)` instead (`pin` is the expander linear pin below).',
         '',
         '## Board Summary',
         f'- Board: `{board_name}`',
