@@ -11,6 +11,10 @@
 #include "esp_board_manager_includes.h"
 #include "cap_lua.h"
 
+#ifdef CONFIG_ESP_BOARD_DEV_GPIO_EXPANDER_SUPPORT
+#include "esp_io_expander.h"
+#endif
+
 #define LUA_BM_DISPLAY_PANEL_IF_IO        0
 #define LUA_BM_DISPLAY_PANEL_IF_RGB       1
 #define LUA_BM_DISPLAY_PANEL_IF_MIPI_DSI  2
@@ -260,6 +264,46 @@ static int lua_bm_get_lcd_touch_handle(lua_State *L)
 #endif
 }
 
+/* --------------------------------------------------------------------------
+ * board_manager.get_gpio_expander_level(name, pin) -> level (0|1) | nil, errmsg
+ *
+ * Reads one input pin of a board-managed IO expander device (e.g. TCA9555).
+ * `pin` is the linear expander pin number (0..31), NOT an ESP32 GPIO.
+ * -------------------------------------------------------------------------- */
+static int lua_bm_get_gpio_expander_level(lua_State *L)
+{
+#ifdef CONFIG_ESP_BOARD_DEV_GPIO_EXPANDER_SUPPORT
+    const char *name = luaL_checkstring(L, 1);
+    lua_Integer pin = luaL_checkinteger(L, 2);
+    luaL_argcheck(L, pin >= 0 && pin < 32, 2, "expander pin must be in [0, 31]");
+
+    void *handle = NULL;
+    esp_err_t err = esp_board_manager_get_device_handle(name, &handle);
+    if (err != ESP_OK) {
+        return push_err(L, err, name);
+    }
+    esp_io_expander_handle_t *expander_ptr = (esp_io_expander_handle_t *)handle;
+    if (expander_ptr == NULL || *expander_ptr == NULL) {
+        lua_pushnil(L);
+        lua_pushfstring(L, "gpio_expander '%s' handle is NULL", name);
+        return 2;
+    }
+
+    uint32_t pin_mask = 1U << (uint32_t)pin;
+    uint32_t level = 0;
+    err = esp_io_expander_get_level(*expander_ptr, pin_mask, &level);
+    if (err != ESP_OK) {
+        return push_err(L, err, "get_gpio_expander_level");
+    }
+    lua_pushinteger(L, (level & pin_mask) ? 1 : 0);
+    return 1;
+#else
+    lua_pushnil(L);
+    lua_pushstring(L, "gpio expander support is disabled");
+    return 2;
+#endif
+}
+
 #ifdef CONFIG_ESP_BOARD_DEV_AUDIO_CODEC_SUPPORT
 static esp_err_t lua_bm_get_i2s_audio_format(const periph_i2s_config_t *i2s_cfg,
                                              uint32_t *sample_rate,
@@ -463,6 +507,7 @@ int luaopen_board_manager(lua_State *L)
         {"get_device_config_handle", lua_bm_get_device_config_handle},
         {"get_display_lcd_params", lua_bm_get_display_lcd_params},
         {"get_lcd_touch_handle", lua_bm_get_lcd_touch_handle},
+        {"get_gpio_expander_level", lua_bm_get_gpio_expander_level},
         {"get_audio_codec_input_params", lua_bm_get_audio_codec_input_params},
         {"get_audio_codec_output_params", lua_bm_get_audio_codec_output_params},
         {"get_camera_paths",  lua_bm_get_camera_paths},

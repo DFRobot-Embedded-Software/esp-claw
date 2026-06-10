@@ -20,6 +20,48 @@ devices:
       - name: i2c_master
         i2c_addr: [0x40]   # 8-bit for TCA9555 ADDRESS_000 (7-bit 0x20)
 
+  # Buttons KB / KA on the TCA9555 expander (active-low), custom drivers in setup_device.c.
+  # custom_io is metadata-only for tooling; the driver hard-codes the same pins.
+  - name: button_kb
+    type: button
+    sub_type: custom
+    depends_on: gpio_expander
+    config:
+      custom_io:
+        routed_via: gpio_expander
+        pin: 2          # linear expander pin (XL9555 P02)
+        chip_pin: P02
+        active_level: 0
+      long_press_time: 1000
+      short_press_time: 50
+      events_cfg:
+        press_down: true
+        press_up: true
+        single_click: true
+        double_click: true
+        long_press_start: true
+        long_press_up: true
+
+  - name: button_ka
+    type: button
+    sub_type: custom
+    depends_on: gpio_expander
+    config:
+      custom_io:
+        routed_via: gpio_expander
+        pin: 12         # linear expander pin (XL9555 P14 = port1 bit4)
+        chip_pin: P14
+        active_level: 0
+      long_press_time: 1000
+      short_press_time: 50
+      events_cfg:
+        press_down: true
+        press_up: true
+        single_click: true
+        double_click: true
+        long_press_start: true
+        long_press_up: true
+
   # Speaker path: I2S TX to NS4168 (CTRL selects I2S right slot in hardware).
   - name: audio_dac
     chip: internal

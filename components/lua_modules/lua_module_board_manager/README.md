@@ -12,6 +12,7 @@ This module describes how to correctly use board_manager when writing Lua script
 - Use the built-in constants `board_manager.PANEL_IF_IO`, `board_manager.PANEL_IF_RGB`, and `board_manager.PANEL_IF_MIPI_DSI`
 - `panel_if` returned by `get_display_lcd_params(...)` matches one of those constants
 - Call `board_manager.get_lcd_touch_handle(name)` to get the raw LCD touch handle
+- Call `board_manager.get_gpio_expander_level(name, pin)` to read one pin of an IO expander device (e.g. TCA9555); `pin` is the linear expander pin number, NOT an ESP32 GPIO. For active-low buttons, level `0` means pressed
 - Call `board_manager.get_audio_codec_input_params(name)` or `board_manager.get_audio_codec_output_params(name)` to get codec handles and format parameters
 - Call `board_manager.get_camera_paths()` to get camera device paths such as `dev_path` and `meta_path`
 
@@ -32,4 +33,10 @@ end
 
 local camera_paths = board_manager.get_camera_paths()
 print(camera_paths.dev_path)
+
+-- Read an expander-routed button (active-low): pressed when level == 0
+local level = board_manager.get_gpio_expander_level("gpio_expander", 12)
+if level == 0 then
+    print("button pressed")
+end
 ```
