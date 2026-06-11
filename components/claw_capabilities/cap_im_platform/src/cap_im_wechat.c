@@ -572,6 +572,9 @@ static esp_err_t cap_im_wechat_http_request(const char *url,
     config.user_data = response;
     config.buffer_size = 1024;
     config.buffer_size_tx = 2048;
+#ifdef CONFIG_HTTP_REUSE_ENABLE
+    config.keep_alive_enable = true;
+#endif
 
     client = esp_http_client_init(&config);
     if (!client) {

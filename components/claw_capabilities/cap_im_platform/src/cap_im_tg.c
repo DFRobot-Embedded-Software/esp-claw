@@ -209,9 +209,12 @@ static esp_err_t cap_im_tg_api_call(const char *method,
     config.event_handler = cap_im_tg_http_event_handler;
     config.user_data = &resp;
     config.timeout_ms = (CAP_IM_TG_POLL_TIMEOUT_S + 5) * 1000;
-    config.buffer_size = 1024;
+    config.buffer_size = 2048;
     config.buffer_size_tx = 2048;
     config.crt_bundle_attach = esp_crt_bundle_attach;
+#ifdef CONFIG_HTTP_REUSE_ENABLE
+    config.keep_alive_enable = true;
+#endif
 
     client = esp_http_client_init(&config);
     if (!client) {
@@ -1019,6 +1022,9 @@ static esp_err_t cap_im_tg_send_multipart_file(const char *method,
     config.buffer_size = 2048;
     config.buffer_size_tx = 2048;
     config.crt_bundle_attach = esp_crt_bundle_attach;
+#ifdef CONFIG_HTTP_REUSE_ENABLE
+    config.keep_alive_enable = true;
+#endif
 
     client = esp_http_client_init(&config);
     if (!client) {

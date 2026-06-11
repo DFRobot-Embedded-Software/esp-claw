@@ -1165,6 +1165,9 @@ retry:
     config.buffer_size = 1024;
     config.buffer_size_tx = 2048;
     config.crt_bundle_attach = esp_crt_bundle_attach;
+#ifdef CONFIG_HTTP_REUSE_ENABLE
+    config.keep_alive_enable = true;
+#endif
 
     client = esp_http_client_init(&config);
     if (!client) {

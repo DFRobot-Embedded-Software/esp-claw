@@ -289,6 +289,9 @@ static esp_err_t cap_im_feishu_http_json(const char *url,
     config.buffer_size = 2048;
     config.buffer_size_tx = 2048;
     config.crt_bundle_attach = esp_crt_bundle_attach;
+#ifdef CONFIG_HTTP_REUSE_ENABLE
+    config.keep_alive_enable = true;
+#endif
 
     client = esp_http_client_init(&config);
     if (!client) {
@@ -1399,7 +1402,7 @@ static esp_err_t cap_im_feishu_download_attachment(const char *message_id,
     config.url = url;
     config.timeout_ms = 30000;
     config.buffer_size = sizeof(read_buf);
-    config.buffer_size_tx = 1024;
+    config.buffer_size_tx = 2048;
     config.crt_bundle_attach = esp_crt_bundle_attach;
     config.event_handler = cap_im_feishu_download_event_handler;
     config.user_data = &download_ctx;
